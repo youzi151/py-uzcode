@@ -9,14 +9,14 @@
 
 **完成標準**：CLI 指定 workdir / req，正確載入並顯示設定與 messages。
 
-- [ ] `src/uzcode` 套件骨架（uv src layout）
-- [ ] `pyproject.toml`：套件 metadata、`uzcode` CLI entry point、依賴
-- [ ] `data/config.py`：載入 `.uzcode/cfg.toml`
-- [ ] `data/request.py`：載入 / 寫回 `req.toml`
-- [ ] `cli.py`：`--workdir` / `--req`，印出 config 與 messages
-- [ ] 範例 workdir：`examples/sample/.uzcode/cfg.toml` + `req.toml`
-- [ ] stub：`engine.py`、`tools/`、`middleware/`
-- [ ] 本地驗證：`uv sync` 後執行  
+- [x] `src/uzcode` 套件骨架（uv src layout）
+- [x] `pyproject.toml`：套件 metadata、`uzcode` CLI entry point、依賴
+- [x] `data/config.py`：載入 `.uzcode/cfg.toml`
+- [x] `data/request.py`：載入 / 寫回 `req.toml`
+- [x] `cli.py`：`--workdir` / `--req`，印出 config 與 messages
+- [x] 範例 workdir：`examples/sample/.uzcode/cfg.toml` + `req.toml`
+- [x] stub：`engine.py`、`tools/`、`middleware/`
+- [x] 本地驗證：`uv sync` 後執行  
   `uzcode --workdir examples/sample --req req.toml`
 
 ---

@@ -1,0 +1,20 @@
+[llm]
+base_url = "https://api.openai.com/v1"
+api_key_env = "OPENAI_API_KEY"
+model = "gpt-4o"
+
+[loop]
+auto_loop = true
+max_iterations = 20
+
+[tools.read_file]
+require_confirm = false
+
+[tools.write_file]
+require_confirm = true
+preview_diff = true
+retry = 0
+on_failure = "abort"
+
+[middleware]
+order = ["preprocesser", "logging"]
