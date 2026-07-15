@@ -1,7 +1,7 @@
 [llm]
-base_url = "https://api.openai.com/v1"
-api_key_env = "OPENAI_API_KEY"
-model = "gpt-4o"
+base_url = "http://127.0.0.1:8081/v1"
+api_key = "1"
+model = "1"
 
 [loop]
 auto_loop = true

@@ -11,6 +11,7 @@ from typing import Any
 @dataclass
 class LLMConfig:
     base_url: str = "https://api.openai.com/v1"
+    api_key: str | None = None
     api_key_env: str = "OPENAI_API_KEY"
     model: str = "gpt-4o"
 
@@ -53,6 +54,7 @@ class Config:
             work_dir=work_dir,
             llm=LLMConfig(
                 base_url=llm_raw.get("base_url", LLMConfig.base_url),
+                api_key=llm_raw.get("api_key"),
                 api_key_env=llm_raw.get("api_key_env", LLMConfig.api_key_env),
                 model=llm_raw.get("model", LLMConfig.model),
             ),

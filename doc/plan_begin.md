@@ -234,5 +234,5 @@ Phase 0 骨架
 
 ---
 
-**專案狀態**：設計規劃中 → 依本計畫進入實作  
+**專案狀態**：Phase 0 完成；Phase 1 實作中（LangGraph 工作流 + LiteLLM）  
 **參考**：與 Aider、OpenHands 相比，uzcode 專注透明度、可控性與極簡，方便 debug / replay。

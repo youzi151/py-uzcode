@@ -25,12 +25,12 @@
 
 **完成標準**：單輪對話可跑通，結果可透明寫回 TOML。
 
-- [ ] `engine.py`：載入 config + request → 呼叫 LLM → append assistant message
-- [ ] OpenAI Chat Completions client（`base_url` / `api_key_env` / `model` 來自 cfg）
-- [ ] Before / after LLM middleware hook 點（此階段可 no-op）
-- [ ] 寫回 `req.toml`，或 CLI 指定輸出路徑（例如 `--out`）
-- [ ] CLI 改為真正跑引擎（不再只印載入結果）
-- [ ] 手動驗收：一輪 user → assistant，TOML 可見完整 messages
+- [x] `engine.py`：LangGraph 流程（before_llm → call_llm → after_llm）→ 呼叫 LLM → append assistant message
+- [x] LiteLLM client（`base_url` / `api_key_env` / `model` 來自 cfg；OpenAI-compatible 走 `openai/` prefix）
+- [x] Before / after LLM middleware hook 點（此階段可 no-op）
+- [x] 寫回 `req.toml`，或 CLI 指定輸出路徑（`--out`）
+- [x] CLI 改為真正跑引擎（不再只印載入結果）
+- [x] 手動驗收：一輪 user → assistant，TOML 可見完整 messages
 
 ---
 

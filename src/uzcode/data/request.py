@@ -62,14 +62,16 @@ class Request:
         )
 
     def write(self, path: str | Path | None = None) -> None:
-        """Write request back to TOML (used in Phase 1+)."""
+        """Write request back to TOML using editable [[messages]] tables."""
         import tomli_w
 
-        out = path or self.path
-        out = Path(out)
+        out = Path(path or self.path)
+        chunks: list[str] = []
 
-        data: dict[str, Any] = dict(self.raw)
-        data["messages"] = []
+        other = {k: v for k, v in self.raw.items() if k != "messages"}
+        if other:
+            chunks.append(tomli_w.dumps(other).rstrip())
+
         for msg in self.messages:
             entry: dict[str, Any] = {"role": msg.role, "content": msg.content}
             if msg.name is not None:
@@ -77,7 +79,6 @@ class Request:
             if msg.tool_call_id is not None:
                 entry["tool_call_id"] = msg.tool_call_id
             entry.update(msg.extra)
-            data["messages"].append(entry)
+            chunks.append("[[messages]]\n" + tomli_w.dumps(entry).rstrip())
 
-        with out.open("wb") as f:
-            tomli_w.dump(data, f)
+        out.write_text("\n\n".join(chunks) + "\n", encoding="utf-8")

@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from uzcode.data import Config, Request
+from uzcode.engine import run as run_engine
 
 
 def _format_config(config: Config) -> str:
@@ -16,7 +17,7 @@ def _format_config(config: Config) -> str:
         "",
         "[llm]",
         f"  base_url:    {config.llm.base_url}",
-        f"  api_key_env: {config.llm.api_key_env}",
+        f"  api_key:     {config.llm.api_key}",
         f"  model:       {config.llm.model}",
         "",
         "[loop]",
@@ -43,17 +44,11 @@ def _format_config(config: Config) -> str:
     return "\n".join(lines)
 
 
-def _format_messages(request: Request) -> str:
-    lines = [f"req: {request.path}", f"messages: {len(request.messages)}", ""]
-    for i, msg in enumerate(request.messages):
-        lines.append(f"[{i}] role={msg.role}")
-        preview = msg.content.replace("\n", "\\n")
-        if len(preview) > 120:
-            preview = preview[:117] + "..."
-        lines.append(f"    content: {preview!r}")
-        if msg.extra:
-            lines.append(f"    extra: {json.dumps(msg.extra, ensure_ascii=False)}")
-    return "\n".join(lines)
+def _preview_content(content: str, limit: int = 200) -> str:
+    preview = content.replace("\n", "\\n")
+    if len(preview) > limit:
+        return preview[: limit - 3] + "..."
+    return preview
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -70,6 +65,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--req",
         default="req.toml",
         help="Path to request TOML file (default: req.toml)",
+    )
+    parser.add_argument(
+        "--out",
+        default=None,
+        help="Write result TOML to this path (default: overwrite --req)",
     )
     return parser
 
@@ -93,8 +93,27 @@ def main(argv: list[str] | None = None) -> int:
     print("=== Config ===")
     print(_format_config(config))
     print()
-    print("=== Request ===")
-    print(_format_messages(request))
+
+    try:
+        request = run_engine(config, request, out_path=args.out)
+    except RuntimeError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    out = Path(args.out).resolve() if args.out else request.path
+    assistant = next(
+        (m for m in reversed(request.messages) if m.role == "assistant"),
+        None,
+    )
+
+    print("=== Result ===")
+    print(f"wrote: {out}")
+    print(f"messages: {len(request.messages)}")
+    if assistant is not None:
+        print(f"assistant: {_preview_content(assistant.content)!r}")
     return 0
 
 

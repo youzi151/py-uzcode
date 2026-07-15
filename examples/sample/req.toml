@@ -4,4 +4,4 @@ content = "You are a coding agent. Be concise and helpful."
 
 [[messages]]
 role = "user"
-content = "Please read README and summarize it."
+content = "Say hello in one short sentence."
