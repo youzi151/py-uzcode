@@ -17,4 +17,10 @@ retry = 0
 on_failure = "abort"
 
 [middleware]
-order = ["preprocesser", "logging"]
+enable = ["logging"]
+
+[middleware.order.before_llm]
+logging = 10
+
+[middleware.order.after_llm]
+logging = 100

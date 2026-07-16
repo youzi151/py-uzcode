@@ -1,4 +1,4 @@
-"""Thin core engine: LangGraph workflow + LiteLLM (Phase 1)."""
+"""Thin core engine: LangGraph workflow + LiteLLM + hook registry."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import litellm
 from langgraph.graph import END, START, StateGraph
 
 from uzcode.data import Config, Message, Request
-from uzcode.middleware.base import Middleware
+from uzcode.middleware.base import HookRegistry
 
 
 class AgentState(TypedDict):
@@ -29,18 +29,6 @@ def _messages_to_dicts(messages: list[Message]) -> list[dict[str, Any]]:
     return result
 
 
-def _run_middleware_chain(
-    middlewares: list[Middleware],
-    hook: str,
-    ctx: dict[str, Any],
-) -> dict[str, Any]:
-    for mw in middlewares:
-        fn = getattr(mw, hook, None)
-        if fn is not None:
-            ctx = fn(ctx)
-    return ctx
-
-
 def _litellm_model(model: str) -> str:
     """Route OpenAI-compatible endpoints via the openai/ provider prefix."""
     known_prefixes = (
@@ -56,10 +44,10 @@ def _litellm_model(model: str) -> str:
     return f"openai/{model}"
 
 
-def _build_graph(config: Config, middlewares: list[Middleware]):
+def _build_graph(config: Config, registry: HookRegistry):
     def before_llm(state: AgentState) -> dict[str, Any]:
         ctx: dict[str, Any] = {"messages": state["messages"], "config": config}
-        ctx = _run_middleware_chain(middlewares, "before_llm", ctx)
+        ctx = registry.run("before_llm", ctx)
         return {"messages": ctx["messages"]}
 
     def call_llm(state: AgentState) -> dict[str, Any]:
@@ -84,7 +72,7 @@ def _build_graph(config: Config, middlewares: list[Middleware]):
 
     def after_llm(state: AgentState) -> dict[str, Any]:
         ctx: dict[str, Any] = {"messages": state["messages"], "config": config}
-        ctx = _run_middleware_chain(middlewares, "after_llm", ctx)
+        ctx = registry.run("after_llm", ctx)
         return {"messages": ctx["messages"]}
 
     graph = StateGraph(AgentState)
@@ -103,15 +91,31 @@ def run(
     request: Request,
     *,
     out_path: str | Path | None = None,
-    middlewares: list[Middleware] | None = None,
+    registry: HookRegistry | None = None,
 ) -> Request:
     """Run one LLM turn (no tools) and write results back to TOML."""
-    mws = middlewares if middlewares is not None else []
-    graph = _build_graph(config, mws)
+    reg = registry if registry is not None else HookRegistry()
+    graph = _build_graph(config, reg)
 
-    initial: AgentState = {"messages": _messages_to_dicts(request.messages)}
-    result = graph.invoke(initial)
+    messages = _messages_to_dicts(request.messages)
+    try:
+        result = graph.invoke({"messages": messages})
+        messages = result["messages"]
+        ctx: dict[str, Any] = {"messages": messages, "config": config}
+        ctx = reg.run("on_result", ctx)
+        messages = ctx["messages"]
+    except Exception as exc:
+        err_ctx: dict[str, Any] = {
+            "messages": messages,
+            "config": config,
+            "error": exc,
+        }
+        try:
+            reg.run("on_error", err_ctx)
+        except Exception:
+            pass
+        raise
 
-    request.messages = [Message.from_dict(m) for m in result["messages"]]
+    request.messages = [Message.from_dict(m) for m in messages]
     request.write(out_path)
     return request

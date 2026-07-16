@@ -9,6 +9,7 @@ from pathlib import Path
 
 from uzcode.data import Config, Request
 from uzcode.engine import run as run_engine
+from uzcode.middleware import load_middleware
 
 
 def _format_config(config: Config) -> str:
@@ -95,7 +96,13 @@ def main(argv: list[str] | None = None) -> int:
     print()
 
     try:
-        request = run_engine(config, request, out_path=args.out)
+        registry = load_middleware(work_dir, config)
+    except (FileNotFoundError, AttributeError, ImportError, TypeError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    try:
+        request = run_engine(config, request, out_path=args.out, registry=registry)
     except RuntimeError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1

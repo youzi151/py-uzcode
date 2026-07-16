@@ -53,13 +53,16 @@ src/uzcode/
 {work_dir}/
 ├── .uzcode/
 │   ├── cfg.toml             # 全域設定、loop、tool 權限、API Key
-│   ├── mids/                # 使用者自訂 middleware
+│   ├── mids/                # 使用者自訂 middleware（外部；同名覆寫內建）
 │   │   ├── preprocesser/
-│   │   ├── logging/
 │   │   └── ...
 │   └── history/             # （可選）歷史 request 快照
 ├── req.toml                 # 本次請求（可由 CLI 指定其他檔案）
 └── ... (專案檔案)
+
+src/middlewares/             # 內建 middleware（隨套件）
+├── logging/
+└── ...
 ```
 
 ---
@@ -88,7 +91,23 @@ src/uzcode/
 
 **完成標準**：單輪對話可跑通，結果可透明寫回 TOML。
 
-### Phase 2 — 內建 Tools
+### Phase 2 — Middleware 系統
+
+可介入階段：
+
+- LLM 呼叫前 / 後
+- Tool 執行前 / 後（hook 名先就緒；實際 tool 於 Phase 3 掛上）
+- 最終結果
+- 錯誤處理
+
+雙路徑發現：`src/middlewares/`（內建）與 `{work_dir}/.uzcode/mids/`（外部；同名外部優先）。  
+各 mid 的 `__init__.py` 以 `register(registry, config)` 自行 `registry.on(hook, fn, order=..., name=...)` 註冊；執行順序依每 hook 的 effective order，可被 `cfg.toml` 的 `[middleware.order.<hook>]` 覆寫。
+
+**範例用途**：token/cost logging、多模型 request 轉換、自訂權限檢查；寫檔 confirm / preview 於 Phase 3 與 tools 一併驗收。
+
+**完成標準**：不改核心即可從雙路徑載入並執行 middleware（至少繞 LLM）；before/after tool hooks 已定義，供 Phase 3 使用。
+
+### Phase 3 — 內建 Tools
 
 基礎集合（不內建 RAG / indexing）：
 
@@ -101,24 +120,9 @@ src/uzcode/
 | `grep` | 簡單內容搜尋 |
 
 行為由 `cfg.toml` 控制：`require_confirm`、`preview_diff`、`retry`、`on_failure`。  
-核心尊重權限設定；preview / confirm 的 UX 留給 middleware。
+核心尊重權限設定；每次 tool 執行走 Phase 2 的 before/after tool middleware；preview / confirm UX 由 middleware 實作。
 
-**完成標準**：LLM 可發出 tool call，引擎執行後把 tool result 寫回 messages，並可繼續下一輪。
-
-### Phase 3 — Middleware 系統
-
-可介入階段：
-
-- LLM 呼叫前 / 後
-- Tool 執行前 / 後
-- 最終結果
-- 錯誤處理
-
-從 `.uzcode/mids/` 依 config 順序動態載入。
-
-**範例用途**：diff preview + 使用者確認、token/cost logging、多模型 request 轉換、自訂權限檢查。
-
-**完成標準**：不改核心即可用 middleware 攔截 `write_file` / `edit_file` 做確認。
+**完成標準**：LLM 可發出 tool call，引擎經 middleware 執行後把 tool result 寫回 messages；可用 middleware 攔截 `write_file` / `edit_file` 做確認，無需改引擎。
 
 ### Phase 4 — Loop 控制
 
@@ -168,7 +172,13 @@ retry = 0
 on_failure = "abort"   # abort | continue | ask
 
 [middleware]
-order = ["preprocesser", "logging"]
+enable = ["logging"]
+
+[middleware.order.before_llm]
+logging = 10
+
+[middleware.order.after_llm]
+logging = 100
 ```
 
 ### 4.2 `req.toml`（草圖）
@@ -226,13 +236,13 @@ uzcode --req request_v1.toml          # 可指定輸出路徑以利版本控制
 ```text
 Phase 0 骨架
     → Phase 1 單輪 LLM
-        → Phase 2 Tools
-            → Phase 3 Middleware
+        → Phase 2 Middleware
+            → Phase 3 Tools
                 → Phase 4 auto_loop
                     → Phase 5 範例與 API 打磨
 ```
 
 ---
 
-**專案狀態**：Phase 0 完成；Phase 1 實作中（LangGraph 工作流 + LiteLLM）  
+**專案狀態**：Phase 0–2 完成；下一步 Phase 3（內建 Tools）  
 **參考**：與 Aider、OpenHands 相比，uzcode 專注透明度、可控性與極簡，方便 debug / replay。

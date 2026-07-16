@@ -34,9 +34,22 @@
 
 ---
 
-## Phase 2 — 內建 Tools
+## Phase 2 — Middleware 系統
 
-**完成標準**：LLM 可 tool call，引擎執行後寫回 tool result，並可再進下一輪。
+**完成標準**：不改核心即可從 `src/middlewares/` 與 `.uzcode/mids/` 載入並執行 middleware（至少繞 LLM）；before/after tool hooks 已定義。
+
+- [x] `middleware/base.py`：`HookRegistry`（`on(hook, fn, order=, name=)` / `run`）  
+  （before/after LLM、before/after tool、on_result、on_error；非 Protocol）
+- [x] `middleware/loader.py`：雙路徑發現（internal `src/middlewares` + external `.uzcode/mids`）；各 mid `register(registry, config)`
+- [x] 引擎各階段串接 registry（LLM + on_result / on_error 活著；tool hooks 就緒待 Phase 3）
+- [x] 範例 middleware：`src/middlewares/logging`；cfg 可 `enable` + 每 hook `middleware.order.*` 覆寫
+- [x] 手動驗收：掛上 middleware 後 LLM 路徑會被攔截／記錄，無需改引擎
+
+---
+
+## Phase 3 — 內建 Tools
+
+**完成標準**：LLM 可 tool call；經 middleware 執行後寫回 tool result；寫檔可被 middleware 攔截確認。
 
 - [ ] `tools/registry.py`：註冊與查詢 tools
 - [ ] `read_file`
@@ -44,23 +57,11 @@
 - [ ] `edit_file`
 - [ ] `list_dir`
 - [ ] `grep`
-- [ ] 引擎：把 tools schema 傳給 LLM；解析 tool_calls；執行並 append tool messages
+- [ ] 引擎：把 tools schema 傳給 LLM；解析 tool_calls；經 before/after tool middleware 執行並 append tool messages
 - [ ] 尊重 `cfg.toml`：`require_confirm`、`preview_diff`、`retry`、`on_failure`  
-  （confirm / preview UX 留給 Phase 3 middleware）
-- [ ] 手動驗收：要求讀檔的 request 可跑通並寫回 tool result
-
----
-
-## Phase 3 — Middleware 系統
-
-**完成標準**：不改核心即可用 middleware 攔截 `write_file` / `edit_file` 做確認。
-
-- [ ] `middleware/base.py`：完整 hook 介面  
-  （before/after LLM、before/after tool、on_result、on_error）
-- [ ] `middleware/loader.py`：從 `.uzcode/mids/` 依 `middleware.order` 動態載入
-- [ ] 引擎各階段串接 middleware chain
-- [ ] 範例 middleware（可先放 examples）：攔截寫檔 + confirm / preview stub
-- [ ] 手動驗收：掛上 middleware 後寫檔會被攔截，無需改引擎
+  （confirm / preview UX 由 Phase 2 middleware 實作）
+- [ ] 範例 middleware：攔截寫檔 + confirm / preview stub
+- [ ] 手動驗收：讀檔 request 可跑通；掛上 middleware 後寫檔會被攔截，無需改引擎
 
 ---
 
@@ -108,4 +109,4 @@
 
 ---
 
-**建議順序**：Phase 0 → 1 → 2 → 3 → 4 → 5（見 plan §8）
+**建議順序**：Phase 0 → 1 → 2（Middleware）→ 3（Tools）→ 4 → 5（見 plan §8）
