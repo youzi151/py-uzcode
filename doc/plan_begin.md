@@ -35,15 +35,10 @@ src/uzcode/
 ├── engine.py            # 薄核心：LLM ↔ tools ↔ loop
 ├── tools/
 │   ├── __init__.py
-│   ├── registry.py
-│   ├── read_file.py
-│   ├── write_file.py
-│   ├── edit_file.py
-│   ├── list_dir.py
-│   └── grep.py
+│   └── registry.py      # 薄註冊表（實作由 middleware 提供）
 └── middleware/
     ├── __init__.py
-    ├── base.py          # hook 介面
+    ├── base.py          # hook 介面 + registry.tool()
     └── loader.py        # 從 .uzcode/mids/ 動態載入
 ```
 
@@ -62,6 +57,7 @@ src/uzcode/
 
 src/middlewares/             # 內建 middleware（隨套件）
 ├── logging/
+├── file_cru/                # read/list/grep + write/edit tools
 └── ...
 ```
 
@@ -107,22 +103,32 @@ src/middlewares/             # 內建 middleware（隨套件）
 
 **完成標準**：不改核心即可從雙路徑載入並執行 middleware（至少繞 LLM）；before/after tool hooks 已定義，供 Phase 3 使用。
 
-### Phase 3 — 內建 Tools
+### Phase 3 — Tools（以 middleware 提供）
 
-基礎集合（不內建 RAG / indexing）：
+核心只保留薄 `ToolRegistry` + 一輪 tool 執行；**工具實作無特權**，由 middleware 註冊（內建 `file_cru`）。
 
-| Tool | 職責 |
-|------|------|
-| `read_file` | 讀取檔案 |
-| `write_file` | 寫入檔案 |
-| `edit_file` | 編輯／替換內容 |
-| `list_dir` | 列出目錄 |
-| `grep` | 簡單內容搜尋 |
+`file_cru`（create / read / update）：
 
-行為由 `cfg.toml` 控制：`require_confirm`、`preview_diff`、`retry`、`on_failure`。  
-核心尊重權限設定；每次 tool 執行走 Phase 2 的 before/after tool middleware；preview / confirm UX 由 middleware 實作。
+| Tool | CRU | 職責 |
+|------|-----|------|
+| `read_file` | read | 讀取檔案 |
+| `list_dir` | read | 列出目錄 |
+| `grep` | read | 簡單內容搜尋 |
+| `write_file` | create | 建立／覆寫檔案 |
+| `edit_file` | update | 編輯／替換內容 |
 
-**完成標準**：LLM 可發出 tool call，引擎經 middleware 執行後把 tool result 寫回 messages；可用 middleware 攔截 `write_file` / `edit_file` 做確認，無需改引擎。
+雙層設定：
+
+1. `middleware.enable` — 是否載入提供 tools 的 mid（如 `file_cru`）
+2. `[tools.<name>]` — 每個要送給 LLM 的 tool：`enable`、`permission`（`ask` \| `approve` \| `custom`）、`preview_diff`、`retry`、`on_failure`  
+   （未在 cfg 定義 `permission` 時一律視為 `ask`；無依 tool 名稱硬編碼）  
+   - `approve`：直接執行  
+   - `ask`：引擎內建 `(Y/n)`  
+   - `custom`：引擎不提問；預設拒絕，由 `before_tool` middleware 清 `skip` 核准或留下拒絕結果
+
+每次 tool 執行走 `before_tool` →（若 `permission = "ask"` 則引擎 `(Y/n)`）→ execute → `after_tool`；`preview_diff` / `custom` UX 由 middleware 實作，handler 本身不做權限判斷。
+
+**完成標準**：LLM 可發出 tool call；引擎經 middleware 執行後把 tool result 寫回 messages；可依 cfg 關閉單一 tool 或對寫檔 `permission = "ask"` 攔截，無需改引擎。
 
 ### Phase 4 — Loop 控制
 
@@ -163,22 +169,40 @@ auto_loop = true
 max_iterations = 20
 
 [tools.read_file]
-require_confirm = false
+enable = true
+permission = "approve"   # approve | ask | custom
+
+[tools.list_dir]
+enable = true
+permission = "approve"
+
+[tools.grep]
+enable = true
+permission = "approve"
 
 [tools.write_file]
-require_confirm = true
+enable = true
+permission = "ask"
 preview_diff = true
 retry = 0
 on_failure = "abort"   # abort | continue | ask
 
+[tools.edit_file]
+enable = true
+permission = "ask"
+preview_diff = true
+
 [middleware]
-enable = ["logging"]
+enable = ["logging", "file_cru"]
 
 [middleware.order.before_llm]
 logging = 10
 
 [middleware.order.after_llm]
 logging = 100
+
+[middleware.order.before_tool]
+file_cru = 50
 ```
 
 ### 4.2 `req.toml`（草圖）
@@ -244,5 +268,5 @@ Phase 0 骨架
 
 ---
 
-**專案狀態**：Phase 0–2 完成；下一步 Phase 3（內建 Tools）  
+**專案狀態**：Phase 0–3 完成（tools 由 `file_cru` mid 提供；尚無 auto_loop）；下一步 Phase 4  
 **參考**：與 Aider、OpenHands 相比，uzcode 專注透明度、可控性與極簡，方便 debug / replay。

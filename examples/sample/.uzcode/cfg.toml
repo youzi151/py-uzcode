@@ -8,19 +8,39 @@ auto_loop = true
 max_iterations = 20
 
 [tools.read_file]
-require_confirm = false
+enable = true
+permission = "approve"
+
+[tools.list_dir]
+enable = true
+permission = "approve"
+
+[tools.grep]
+enable = true
+permission = "approve"
 
 [tools.write_file]
-require_confirm = true
+enable = true
+permission = "ask"
+preview_diff = true
+retry = 0
+on_failure = "abort"
+
+[tools.edit_file]
+enable = true
+permission = "ask"
 preview_diff = true
 retry = 0
 on_failure = "abort"
 
 [middleware]
-enable = ["logging"]
+enable = ["logging", "file_cru"]
 
 [middleware.order.before_llm]
 logging = 10
 
 [middleware.order.after_llm]
 logging = 100
+
+[middleware.order.before_tool]
+file_cru = 50

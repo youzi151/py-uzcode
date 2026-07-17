@@ -6,6 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from uzcode.tools.registry import ToolHandler, ToolRegistry
+
 HookFn = Callable[[dict[str, Any]], dict[str, Any]]
 
 HOOKS = (
@@ -26,14 +28,16 @@ class _Registration:
 
 
 class HookRegistry:
-    """Collects hook callables; runs them sorted by effective order per hook."""
+    """Collects hook callables and tools registered by middleware."""
 
     def __init__(
         self,
         order_overrides: dict[str, dict[str, int]] | None = None,
+        tools: ToolRegistry | None = None,
     ) -> None:
         self._order_overrides = order_overrides or {}
         self._hooks: dict[str, list[_Registration]] = {h: [] for h in HOOKS}
+        self.tools = tools if tools is not None else ToolRegistry()
 
     def on(self, hook: str, fn: HookFn, *, order: int, name: str) -> None:
         if hook not in self._hooks:
@@ -42,6 +46,21 @@ class HookRegistry:
         if any(r.name == name for r in self._hooks[hook]):
             raise ValueError(f"Duplicate registration for hook {hook!r} name {name!r}")
         self._hooks[hook].append(_Registration(name=name, fn=fn, order=order))
+
+    def tool(
+        self,
+        name: str,
+        *,
+        description: str,
+        parameters: dict[str, Any],
+        handler: ToolHandler,
+    ) -> None:
+        self.tools.register(
+            name,
+            description=description,
+            parameters=parameters,
+            handler=handler,
+        )
 
     def _effective_order(self, hook: str, name: str, default: int) -> int:
         override = self._order_overrides.get(hook, {}).get(name)

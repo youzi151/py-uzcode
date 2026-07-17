@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tomllib
+import tomli_w
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -62,16 +63,18 @@ class Request:
         )
 
     def write(self, path: str | Path | None = None) -> None:
-        """Write request back to TOML using editable [[messages]] tables."""
-        import tomli_w
+        """Write request back to TOML using editable [[messages]] tables.
+
+        Messages must be dumped as a single ``{"messages": [...]}`` document so
+        nested arrays (e.g. ``tool_calls``) become ``[[messages.tool_calls]]``.
+        Prefixing ``[[messages]]`` onto a per-message dump would emit top-level
+        ``[[tool_calls]]`` and detach them on the next load.
+        """
 
         out = Path(path or self.path)
         chunks: list[str] = []
-
-        other = {k: v for k, v in self.raw.items() if k != "messages"}
-        if other:
-            chunks.append(tomli_w.dumps(other).rstrip())
-
+        
+        messages: list[dict[str, Any]] = []
         for msg in self.messages:
             entry: dict[str, Any] = {"role": msg.role, "content": msg.content}
             if msg.name is not None:
@@ -79,6 +82,9 @@ class Request:
             if msg.tool_call_id is not None:
                 entry["tool_call_id"] = msg.tool_call_id
             entry.update(msg.extra)
-            chunks.append("[[messages]]\n" + tomli_w.dumps(entry).rstrip())
+            messages.append(entry)
 
-        out.write_text("\n\n".join(chunks) + "\n", encoding="utf-8")
+        if messages:
+            chunks.append(tomli_w.dumps({"messages": messages}).rstrip())
+
+        out.write_text(("\n\n".join(chunks) + "\n") if chunks else "", encoding="utf-8")

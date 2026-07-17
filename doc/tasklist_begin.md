@@ -21,6 +21,8 @@
 
 ---
 
+
+
 ## Phase 1 — 薄引擎（無 tools）
 
 **完成標準**：單輪對話可跑通，結果可透明寫回 TOML。
@@ -33,6 +35,8 @@
 - [x] 手動驗收：一輪 user → assistant，TOML 可見完整 messages
 
 ---
+
+
 
 ## Phase 2 — Middleware 系統
 
@@ -47,23 +51,23 @@
 
 ---
 
-## Phase 3 — 內建 Tools
 
-**完成標準**：LLM 可 tool call；經 middleware 執行後寫回 tool result；寫檔可被 middleware 攔截確認。
 
-- [ ] `tools/registry.py`：註冊與查詢 tools
-- [ ] `read_file`
-- [ ] `write_file`
-- [ ] `edit_file`
-- [ ] `list_dir`
-- [ ] `grep`
-- [ ] 引擎：把 tools schema 傳給 LLM；解析 tool_calls；經 before/after tool middleware 執行並 append tool messages
-- [ ] 尊重 `cfg.toml`：`require_confirm`、`preview_diff`、`retry`、`on_failure`  
-  （confirm / preview UX 由 Phase 2 middleware 實作）
-- [ ] 範例 middleware：攔截寫檔 + confirm / preview stub
-- [ ] 手動驗收：讀檔 request 可跑通；掛上 middleware 後寫檔會被攔截，無需改引擎
+## Phase 3 — Tools（`file_cru` middleware）
+
+**完成標準**：LLM 可 tool call；經 middleware 執行後寫回 tool result；每 tool 可在 cfg 開關／ask｜approve｜custom。
+
+- [x] `tools/registry.py`：薄註冊表（register / openai_tools(config) / execute）
+- [x] `HookRegistry.tool(...)`：mid 可註冊 tools
+- [x] 內建 mid `file_cru`：`read_file` / `list_dir` / `grep`（read）、`write_file`（create）、`edit_file`（update）
+- [x] 引擎：tools schema 傳給 LLM；解析 tool_calls；before/after tool → append tool messages（一輪，無 auto_loop）
+- [x] 尊重 `cfg.toml`：每 tool `enable`、`permission`（ask｜approve｜custom）、`preview_diff`、`retry`、`on_failure`
+- [x] `file_cru` `before_tool`：`preview_diff` stub（`ask` 由引擎 Y/n；`custom` 由其他 mid）
+- [x] 手動驗收：讀檔 request 可跑通；`enable=false` 不上送 LLM；`permission=ask` 寫檔會被攔截
 
 ---
+
+
 
 ## Phase 4 — Loop 控制
 
@@ -75,6 +79,8 @@
 - [ ] 手動驗收：多 tool 任務一次跑完；改 `req.toml` 可 fork / replay
 
 ---
+
+
 
 ## Phase 5 — 打磨與擴充入口
 
@@ -89,6 +95,8 @@
 
 ---
 
+
+
 ## 明確不做（v1）
 
 以下不開任務，避免 scope creep：
@@ -99,6 +107,8 @@
 - 完整 CLI REPL
 
 ---
+
+
 
 ## 整體驗收（全部 Phase 完成後勾選）
 

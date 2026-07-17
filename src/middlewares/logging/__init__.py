@@ -22,7 +22,7 @@ def register(registry, config) -> None:
         )
         preview = _preview(last_user.get("content", "")) if last_user else "(none)"
         print(
-            f"[logging] before_llm: messages={len(messages)} last_user={preview!r}",
+            f"[logging] before_llm: messages={len(messages)} last_user={preview!r}\n ctx={ctx}",
             file=sys.stderr,
         )
         return ctx
