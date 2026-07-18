@@ -33,8 +33,16 @@ preview_diff = true
 retry = 0
 on_failure = "abort"
 
+[tools.summarize_task]
+enable = true
+permission = "approve"
+
 [middleware]
-enable = ["logging", "file_cru"]
+enable = ["logging", "file_cru", "task_summary"]
+
+[middleware.task_summary]
+auto_open = true
+task_summary_path = ".uzcode/summaries"
 
 [middleware.order.before_llm]
 logging = 10
