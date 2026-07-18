@@ -91,13 +91,14 @@ def _tool_opts(config, name: str) -> dict[str, Any]:
 
 
 def _preview_if_needed(ctx: dict[str, Any]) -> str | None:
-    name = ctx.get("tool_name")
-    args = ctx.get("arguments") or {}
+    tool = ctx.get("tool") or {}
+    name = tool.get("name")
+    args = tool.get("arguments") or {}
     config = ctx.get("config")
     opts = _tool_opts(config, str(name))
     if not opts.get("preview_diff"):
         return None
-    work_dir = Path(ctx.get("work_dir") or config.work_dir)
+    work_dir = Path(tool.get("work_dir") or config.work_dir)
     try:
         path = resolve_under_work_dir(work_dir, str(args.get("path", "")))
     except ValueError as exc:
@@ -149,7 +150,7 @@ def register(registry, config) -> None:
         # Preview only; permission=ask is handled by the engine (Y/n).
         preview = _preview_if_needed(ctx)
         if preview:
-            name = ctx.get("tool_name")
+            name = (ctx.get("tool") or {}).get("name")
             print(f"[file_cru] preview for {name}:\n{preview}", file=sys.stderr)
         return ctx
 

@@ -71,12 +71,16 @@
 
 ## Phase 4 — Loop 控制
 
-**完成標準**：一次 CLI 可完成多輪 tool 迴圈；過程可從 `req.toml` 重播。
+**完成標準**：一次 CLI 可完成多輪 tool 迴圈；過程可從 `req.toml` 檢視。
 
-- [ ] 依 `loop.auto_loop` / `loop.max_iterations` 控制迴圈
-- [ ] 有 tool calls 則繼續；無 tool calls 或達上限則停止
-- [ ] 每輪 messages 保持可寫回 / 可 replay
-- [ ] 手動驗收：多 tool 任務一次跑完；改 `req.toml` 可 fork / replay
+無須revert，revert應由git處理.
+
+停止條件（僅此）：最後一輪 assistant **無** `tool_calls`，或達 `max_iterations`；`auto_loop=false` 時維持一輪 LLM + 至多一輪 tools。無專用 stop/report tool。`stop_loop=True`（per-tool ctx / handler / `after_tools`）強制結束 **agent loop**（當輪 tool_calls 仍跑完）。
+
+- [x] 依 `loop.auto_loop` / `loop.max_iterations` 控制迴圈
+- [x] 有 tool calls 則繼續；無 tool calls 或達上限則停止
+- [x] `after_tools` 節點 + hook；`stop_loop` 可強制 `end`（亦可於 `run_tools`呼叫各tool時 設）
+- [x] 手動驗收：多 tool 任務一次跑完
 
 ---
 

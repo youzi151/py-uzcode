@@ -15,6 +15,7 @@ HOOKS = (
     "after_llm",
     "before_tool",
     "after_tool",
+    "after_tools",
     "on_result",
     "on_error",
 )

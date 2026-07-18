@@ -11,7 +11,8 @@ from .paths import resolve_under_work_dir
 
 
 def _work_dir(ctx: dict[str, Any]) -> Path:
-    raw = ctx.get("work_dir")
+    tool = ctx.get("tool") or {}
+    raw = tool.get("work_dir")
     if raw is None:
         config = ctx.get("config")
         raw = getattr(config, "work_dir", None) if config is not None else None

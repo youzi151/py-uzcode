@@ -92,7 +92,7 @@ src/middlewares/             # 內建 middleware（隨套件）
 可介入階段：
 
 - LLM 呼叫前 / 後
-- Tool 執行前 / 後（hook 名先就緒；實際 tool 於 Phase 3 掛上）
+- Tool 執行前 / 後（單個 tool）；整批 tools 後（`after_tools`）
 - 最終結果
 - 錯誤處理
 
@@ -134,6 +134,10 @@ src/middlewares/             # 內建 middleware（隨套件）
 
 - 依 config：`auto_loop`、`max_iterations`
 - 啟用時：有 tool calls 就繼續，直到無 tool calls 或達上限
+- 停止條件依最後一輪 assistant 是否含 `tool_calls`
+- `auto_loop=false`：一輪 LLM + 至多一輪 tools（等同 Phase 3）
+- `stop_loop` in AgentState：用來標記結束 **agent loop**；可於 per-tool/`after_tools` 中設
+- 兩層：LangGraph 節點只傳 `AgentState`；middleware 呼叫用短期 `ctx`（`state`/`config`/`tool`/`error`），引擎只寫回 `ctx["state"]`
 
 **完成標準**：一次 CLI 呼叫可完成多輪 tool 迴圈，過程全程可從 `req.toml` 重播。
 
@@ -268,5 +272,5 @@ Phase 0 骨架
 
 ---
 
-**專案狀態**：Phase 0–3 完成（tools 由 `file_cru` mid 提供；尚無 auto_loop）；下一步 Phase 4  
+**專案狀態**：Phase 0–4 完成（`auto_loop`：有 `tool_calls` 則繼續，無則停；達 `max_iterations` 亦停）；下一步 Phase 5  
 **參考**：與 Aider、OpenHands 相比，uzcode 專注透明度、可控性與極簡，方便 debug / replay。

@@ -32,7 +32,61 @@ def _ask_user_yn(tool_name: str, arguments: dict[str, Any]) -> bool:
 
 
 class AgentState(TypedDict):
+    """LangGraph node I/O only. Mid-owned scratch lives in ``extra``."""
+
     messages: list[dict[str, Any]]
+    iteration: int
+    stop_loop: bool
+    extra: dict[str, Any]
+
+
+class ToolCtx(TypedDict):
+    """Per-tool ephemeral fields; only present on before_tool / after_tool / handlers."""
+
+    name: str
+    arguments: dict[str, Any]
+    tool_call_id: str
+    permission: str
+    work_dir: str
+    skip: bool
+    result: str | None
+
+
+def _copy_state(state: dict[str, Any]) -> AgentState:
+    return {
+        "messages": list(state.get("messages") or []),
+        "iteration": int(state.get("iteration", 0)),
+        "stop_loop": bool(state.get("stop_loop", False)),
+        "extra": dict(state.get("extra") or {}),
+    }
+
+
+def _hook_ctx(
+    state: dict[str, Any],
+    config: Config,
+    *,
+    tool: ToolCtx | None = None,
+    error: BaseException | None = None,
+) -> dict[str, Any]:
+    """Short-lived middleware ctx. Only ``ctx["state"]`` is written back to LangGraph."""
+    return {
+        "state": _copy_state(state),
+        "config": config,
+        "tool": tool,
+        "error": error,
+    }
+
+
+def _state_update(ctx: dict[str, Any]) -> AgentState:
+    state = ctx["state"]
+    if not isinstance(state.get("extra"), dict):
+        raise TypeError("state.extra must be a dict")
+    return {
+        "messages": list(state.get("messages") or []),
+        "iteration": int(state.get("iteration", 0)),
+        "stop_loop": bool(state.get("stop_loop", False)),
+        "extra": dict(state.get("extra") or {}),
+    }
 
 
 def _messages_to_dicts(messages: list[Message]) -> list[dict[str, Any]]:
@@ -132,10 +186,8 @@ def _execute_with_retry(
 
 
 def _build_graph(config: Config, registry: HookRegistry):
-    def before_llm(state: AgentState) -> dict[str, Any]:
-        ctx: dict[str, Any] = {"messages": state["messages"], "config": config}
-        ctx = registry.run("before_llm", ctx)
-        return {"messages": ctx["messages"]}
+    def before_llm(state: AgentState) -> AgentState:
+        return _state_update(registry.run("before_llm", _hook_ctx(state, config)))
 
     def call_llm(state: AgentState) -> dict[str, Any]:
         # Prefer llm.api_key in cfg; env via api_key_env is compatibility only.
@@ -145,7 +197,11 @@ def _build_graph(config: Config, registry: HookRegistry):
                 "API key not found: set llm.api_key in cfg.toml "
                 f"or environment variable {config.llm.api_key_env!r}"
             )
-        print(f"Calling LLM with messages={state['messages']}", file=sys.stderr)
+        iteration = int(state.get("iteration", 0)) + 1
+        print(
+            f"Calling LLM (iteration={iteration}) with messages={state['messages']}",
+            file=sys.stderr,
+        )
         kwargs: dict[str, Any] = {
             "model": _litellm_model(config.llm.model),
             "messages": state["messages"],
@@ -157,6 +213,7 @@ def _build_graph(config: Config, registry: HookRegistry):
             kwargs["tools"] = tools
 
         response = litellm.completion(**kwargs)
+        # print(f"Response: {response}", file=sys.stderr)
         choice = response.choices[0].message
         content = getattr(choice, "content", None) or ""
         assistant: dict[str, Any] = {"role": "assistant", "content": content}
@@ -165,25 +222,33 @@ def _build_graph(config: Config, registry: HookRegistry):
         if raw_calls:
             assistant["tool_calls"] = [_tool_call_to_dict(tc) for tc in raw_calls]
 
-        return {"messages": [*state["messages"], assistant]}
+        return {
+            "messages": [*state["messages"], assistant],
+            "iteration": iteration,
+        }
 
-    def after_llm(state: AgentState) -> dict[str, Any]:
-        ctx: dict[str, Any] = {"messages": state["messages"], "config": config}
-        ctx = registry.run("after_llm", ctx)
-        return {"messages": ctx["messages"]}
+    def after_llm(state: AgentState) -> AgentState:
+        return _state_update(registry.run("after_llm", _hook_ctx(state, config)))
 
-    def run_tools(state: AgentState) -> dict[str, Any]:
-        messages = list(state["messages"])
+    def run_tools(state: AgentState) -> AgentState:
+        """Execute each tool_call; finish the full batch even if stop_loop is set.
+
+        ``stop_loop`` ends the *agent loop* after this turn (via routing), not
+        remaining tool_calls in this batch. Mid mutates ``ctx["state"]``;
+        per-call fields live on ``ctx["tool"]``.
+        """
+        working = _copy_state(state)
+        messages = working["messages"]
         if not messages:
-            return {"messages": messages}
+            return working
 
         last = messages[-1]
         if last.get("role") != "assistant":
-            return {"messages": messages}
+            return working
 
         tool_calls = last.get("tool_calls") or []
         if not tool_calls:
-            return {"messages": messages}
+            return working
 
         for tc in tool_calls:
             tc_dict = _tool_call_to_dict(tc)
@@ -226,14 +291,12 @@ def _build_graph(config: Config, registry: HookRegistry):
             permission = tool_permission(config, name)
             # custom: default deny until before_tool clears skip (engine will not Y/n).
             custom = permission == "custom"
-            ctx: dict[str, Any] = {
-                "messages": messages,
-                "config": config,
-                "work_dir": config.work_dir,
-                "tool_name": name,
+            tool: ToolCtx = {
+                "name": name,
                 "arguments": arguments,
                 "tool_call_id": call_id,
                 "permission": permission,
+                "work_dir": str(config.work_dir),
                 "skip": custom,
                 "result": (
                     f"Error: tool {name!r} requires custom middleware approval"
@@ -241,18 +304,20 @@ def _build_graph(config: Config, registry: HookRegistry):
                     else None
                 ),
             }
+            ctx = _hook_ctx(working, config, tool=tool)
             ctx = registry.run("before_tool", ctx)
+            tool = ctx["tool"]
 
-            if not ctx.get("skip") and permission == "ask":
+            if not tool.get("skip") and permission == "ask":
                 if _ask_user_yn(name, arguments):
-                    ctx["skip"] = False
-                    ctx["result"] = None
+                    tool["skip"] = False
+                    tool["result"] = None
                 else:
-                    ctx["skip"] = True
-                    ctx["result"] = f"Error: tool {name!r} denied by user"
+                    tool["skip"] = True
+                    tool["result"] = f"Error: tool {name!r} denied by user"
 
-            if ctx.get("skip"):
-                result = ctx.get("result")
+            if tool.get("skip"):
+                result = tool.get("result")
                 if result is None:
                     result = f"Error: tool {name!r} was skipped"
                 else:
@@ -261,11 +326,13 @@ def _build_graph(config: Config, registry: HookRegistry):
                 result = _execute_with_retry(
                     registry, name, arguments, ctx, config
                 )
-                ctx["result"] = result
+                tool["result"] = result
 
             ctx = registry.run("after_tool", ctx)
-            result = str(ctx.get("result", result))
-            messages = list(ctx.get("messages") or messages)
+            tool = ctx["tool"]
+            result = str(tool.get("result", result))
+            working = _state_update(ctx)
+            messages = list(working["messages"])
             messages.append(
                 {
                     "role": "tool",
@@ -273,19 +340,62 @@ def _build_graph(config: Config, registry: HookRegistry):
                     "content": result,
                 }
             )
+            working["messages"] = messages
 
-        return {"messages": messages}
+        return working
+
+    def after_tools(state: AgentState) -> AgentState:
+        """Batch-level hook after all tool_calls in this turn.
+
+        Middleware may set ``state["stop_loop"]=True`` to end the agent loop
+        after this turn (not to skip remaining tool_calls).
+        """
+        return _state_update(registry.run("after_tools", _hook_ctx(state, config)))
+
+    def route_after_tools(state: AgentState) -> str:
+        """Continue only when auto_loop is on, under max_iterations, and last
+        assistant message still had tool_calls (stop-on-no-tool-calls).
+
+        ``stop_loop`` forces end of the agent loop (set in run_tools or after_tools).
+        """
+        if state.get("stop_loop"):
+            print("Stopping: stop_loop set by middleware/tool", file=sys.stderr)
+            return "end"
+
+        if not config.loop.auto_loop:
+            return "end"
+
+        iteration = int(state.get("iteration", 0))
+        if iteration >= config.loop.max_iterations:
+            print(
+                f"Stopping: max_iterations={config.loop.max_iterations} reached",
+                file=sys.stderr,
+            )
+            return "end"
+
+        for msg in reversed(state["messages"]):
+            if msg.get("role") == "assistant":
+                if msg.get("tool_calls"):
+                    return "before_llm"
+                return "end"
+        return "end"
 
     graph = StateGraph(AgentState)
     graph.add_node("before_llm", before_llm)
     graph.add_node("call_llm", call_llm)
     graph.add_node("after_llm", after_llm)
     graph.add_node("run_tools", run_tools)
+    graph.add_node("after_tools", after_tools)
     graph.add_edge(START, "before_llm")
     graph.add_edge("before_llm", "call_llm")
     graph.add_edge("call_llm", "after_llm")
     graph.add_edge("after_llm", "run_tools")
-    graph.add_edge("run_tools", END)
+    graph.add_edge("run_tools", "after_tools")
+    graph.add_conditional_edges(
+        "after_tools",
+        route_after_tools,
+        {"before_llm": "before_llm", "end": END},
+    )
     return graph.compile()
 
 
@@ -296,23 +406,33 @@ def run(
     out_path: str | Path | None = None,
     registry: HookRegistry | None = None,
 ) -> Request:
-    """Run one LLM turn, execute any tool_calls once, write results to TOML."""
+    """Run LLM ↔ tools loop (auto_loop / max_iterations), write results to TOML."""
     reg = registry if registry is not None else HookRegistry()
     graph = _build_graph(config, reg)
 
     messages = _messages_to_dicts(request.messages)
+    initial: AgentState = {
+        "messages": messages,
+        "iteration": 0,
+        "stop_loop": False,
+        "extra": {},
+    }
     try:
-        result = graph.invoke({"messages": messages})
+        result = graph.invoke(initial)
         messages = result["messages"]
-        ctx: dict[str, Any] = {"messages": messages, "config": config}
-        ctx = reg.run("on_result", ctx)
-        messages = ctx["messages"]
+        ctx = reg.run("on_result", _hook_ctx(result, config))
+        messages = _state_update(ctx)["messages"]
     except Exception as exc:
-        err_ctx: dict[str, Any] = {
-            "messages": messages,
-            "config": config,
-            "error": exc,
-        }
+        err_ctx = _hook_ctx(
+            {
+                "messages": messages,
+                "iteration": 0,
+                "stop_loop": False,
+                "extra": {},
+            },
+            config,
+            error=exc,
+        )
         try:
             reg.run("on_error", err_ctx)
         except Exception:
