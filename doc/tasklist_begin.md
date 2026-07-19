@@ -27,7 +27,7 @@
 
 **完成標準**：單輪對話可跑通，結果可透明寫回 TOML。
 
-- [x] `engine.py`：LangGraph 流程（before_llm → call_llm → after_llm）→ 呼叫 LLM → append assistant message
+- [x] `engine.py`：LangGraph 流程（handle_request → before_llm → call_llm → after_llm → …）→ 呼叫 LLM → append assistant message
 - [x] LiteLLM client（`base_url` / `api_key_env` / `model` 來自 cfg；OpenAI-compatible 走 `openai/` prefix）
 - [x] Before / after LLM middleware hook 點（此階段可 no-op）
 - [x] 寫回 `req.toml`，或 CLI 指定輸出路徑（`--out`）
@@ -43,7 +43,7 @@
 **完成標準**：不改核心即可從 `src/middlewares/` 與 `.uzcode/mids/` 載入並執行 middleware（至少繞 LLM）；before/after tool hooks 已定義。
 
 - [x] `middleware/base.py`：`HookRegistry`（`on(hook, fn, order=, name=)` / `run`）  
-  （before/after LLM、before/after tool、on_result、on_error；非 Protocol）
+  （handle_request、before/after LLM、before/after tool、after_tools、on_result、on_error；非 Protocol）
 - [x] `middleware/loader.py`：雙路徑發現（internal `src/middlewares` + external `.uzcode/mids`）；各 mid `register(registry, config)`
 - [x] 引擎各階段串接 registry（LLM + on_result / on_error 活著；tool hooks 就緒待 Phase 3）
 - [x] 範例 middleware：`src/middlewares/logging`；cfg 可 `enable` + 每 hook `middleware.order.*` 覆寫
@@ -86,16 +86,57 @@
 
 
 
-## Phase 5 — 打磨與擴充入口
+## Phase 5 — Skills
 
-**完成標準**：文件與範例足以讓使用者自訂 middleware 並掛上。
+**權威**：[plan_feature_skill.md](./plan_feature_skill.md)。完成標準見該文件 §9。
 
-- [ ] 範例 `logging` middleware
-- [ ] 範例 `preprocesser`（`@file` / `@folder` 展開 stub）
-- [ ] （可選）執行後快照到 `.uzcode/history/`
+- [x] 核心：`SkillRegistry`／`registry.skill(...)`；合規發現 `.uzcode/skills/**/SKILL.md`（目錄名 = `name`）
+- [x] 引擎：`handle_request`（一次）→ `before_llm` → …；`AgentState.skills_enabled`（引擎依 cfg 種子）／`system_messages`（mids 追加；`call_llm` 合併成單一 system）
+- [x] 內建 mid `skills`：載入檔案 skills；`before_llm` 將目錄 append 到 `system_messages`（標記 `<!-- uzcode:skills-catalog -->`）；`read_skill`／`read_file_in_skill`（依 `skills_enabled`）
+- [x] 內建 mid `shell`：`sh` tool（cwd = `work_dir`）
+- [x] cfg：`[skills] enable`（省略 = 全部；`[]` = 空；白名單）；`middleware.enable` 含 `"skills"`／`"shell"`
+- [x] 其他 mid：可於 `handle_request` 突變 `state["skills_enabled"]`（例如 ban）；可 `registry.skill(...)` 程式註冊
+- [x] 文件／範例：`examples/sample/.uzcode/skills/demo-skill/`；cfg 啟用 skills + shell
+- [x] 手動驗收：目錄／read／路徑安全／sh／enable／loop／replay（見專項 §9）
+
+**本階段不做**：description 自動匹配、skill 內嵌 tools、`src/skills/` 內建 pack、mid 寫檔到 skills 目錄、多根發現路徑。
+
+---
+
+
+
+## Phase 6 — Preprocessor
+
+**完成標準**：req 含 `@file` / `@folder` 時，送入 LLM 前已展開。
+
+- [ ] 內建 mid `preprocesser`：`before_llm` 展開 `@file path` / `@folder path` stub
+- [ ] 與 `skills` 並用時：skills 目錄在 `system_messages`；preprocesser order 建議 > skills
+- [ ] 範例 req + 手動驗收：標記展開為檔案／目錄文字；不做 RAG
+
+---
+
+
+
+## Phase 7 — History
+
+**完成標準**：cfg 開啟後，每次成功執行在 `.uzcode/history/` 留下可 replay 的 request 複本。
+
+- [ ] 成功路徑快照（`on_result` mid 或 `engine.run` 後 helper）
+- [ ] cfg 開關（預設關閉）
+- [ ] 手動驗收：執行後 history 目錄有複本，可當 `--req` replay
+
+---
+
+
+
+## Pending（未排期）
+
+以下不開階段任務，避免 scope creep：
+
 - [ ] 公開 API 打磨：`CodingAgent(work_dir).run(request_path=...)`
 - [ ] README：安裝、CLI、cfg / req 契約、自訂 middleware 步驟
-- [ ] 更新本清單與 plan 狀態為 v1 可交付
+- [ ] 套件內建 `src/skills/` pack
+- [ ] 依 skill description 智慧匹配
 
 ---
 
@@ -123,4 +164,4 @@
 
 ---
 
-**建議順序**：Phase 0 → 1 → 2（Middleware）→ 3（Tools）→ 4 → 5（見 plan §8）
+**建議順序**：Phase 0 → 1 → 2（Middleware）→ 3（Tools）→ 4 → 5（Skills）→ 6（Preprocessor）→ 7（History）；其餘見 Pending

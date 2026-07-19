@@ -17,6 +17,10 @@
 {work_dir}/
 ├── .uzcode/
 │   ├── cfg.toml             # 全域設定、loop 策略、tool 權限、API Key
+│   ├── skills/              # Skill 檔
+│   │   ├── my_skill/
+│   │   │   └── SKILL.md
+│   │   └── ...
 │   ├── mids/                # 使用者自訂 middleware
 │   │   ├── preprocesser     # 自動展開 `@file`、`@folder` 等標記
 │   │   │   └─ __init__.py
@@ -54,10 +58,17 @@
 **用途範例**：
 - Diff preview + 使用者確認
 - Token / cost / logging
+- Skills 注入、`@file` / `@folder` 展開
 - 未來多模型轉換（middleware 轉換 request）
 - 自訂權限檢查
 
-### 4. Agent Engine（核心極薄）
+### 4. Skills（檔案 + runtime 註冊）
+- **檔案**：`.uzcode/skills/**/SKILL.md`（[Agent Skills](https://agentskills.io/specification) 合規；目錄名 = `name`）
+- **程式**：middleware 以 `registry.skill(...)` 在執行期加入（不寫檔）
+- 內建 `skills` mid：`before_llm` 注入目錄（name + description）；全文／附屬檔經 `read_skill`／`read_file_in_skill`；腳本經 `sh`
+- 詳見 [plan_feature_skill.md](./plan_feature_skill.md)
+
+### 5. Agent Engine（核心極薄）
 執行流程：
 1. 載入 config + request
 2. Before LLM middleware
@@ -67,16 +78,14 @@
 6. After middleware
 7. (可選) 把重要結果 save 回主要 req.toml
 
-### 5. Tools（基礎集合）
-- `read_file`
-- `write_file`
-- `edit_file`
-- `list_dir`
-- `grep` / 簡單搜尋
+### 6. Tools（基礎集合）
+- `read_file` / `write_file` / `edit_file` / `list_dir` / `grep`
+- `read_skill` / `read_file_in_skill`（skills mid）
+- `sh`（shell mid；cwd = work_dir）
 
 不內建 RAG、codebase indexing 等複雜功能。
 
-### 6. 錯誤與安全性
+### 7. 錯誤與安全性
 - Tool 失敗處理依 config 中的 retry / on_failure 設定
 - Preview / Confirm 機制交由 middleware 實作
 - 核心不執行危險操作，除非明確設定
@@ -102,9 +111,9 @@ result = agent.run(request_path="request.toml")
 
 ## 未來擴充方向
 
+- Skills（`.uzcode/skills/`）／Preprocessor（`@file` / `@folder`）／History 快照（見 plan Phase 5–7）
 - 多模型支援（透過 middleware）
 - 更多基礎 tools
-- 更好的 snapshot / history 管理
 - 簡單 CLI REPL（可選）
 
 ## 為什麼 uzcode？
@@ -113,5 +122,5 @@ result = agent.run(request_path="request.toml")
 
 ---
 
-**專案狀態**：設計規劃中  
+**專案狀態**：Phase 0–5 完成（Skills + \sh\uff1b見 plan_feature_skill）；下一步 Phase 6 Preprocessor
 **核心原則**：Keep it simple, give control to the user.

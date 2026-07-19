@@ -32,9 +32,11 @@ def _ask_user_yn(tool_name: str, arguments: dict[str, Any]) -> bool:
 
 
 class AgentState(TypedDict):
-    """LangGraph node I/O only. Mid-owned scratch lives in ``extra``."""
+    """LangGraph node I/O. Mid scratch lives in ``extra``."""
 
     messages: list[dict[str, Any]]
+    system_messages: list[str]
+    skills_enabled: list[str]
     iteration: int
     stop_loop: bool
     extra: dict[str, Any]
@@ -55,6 +57,8 @@ class ToolCtx(TypedDict):
 def _copy_state(state: dict[str, Any]) -> AgentState:
     return {
         "messages": list(state.get("messages") or []),
+        "system_messages": list(state.get("system_messages") or []),
+        "skills_enabled": list(state.get("skills_enabled") or []),
         "iteration": int(state.get("iteration", 0)),
         "stop_loop": bool(state.get("stop_loop", False)),
         "extra": dict(state.get("extra") or {}),
@@ -81,8 +85,16 @@ def _state_update(ctx: dict[str, Any]) -> AgentState:
     state = ctx["state"]
     if not isinstance(state.get("extra"), dict):
         raise TypeError("state.extra must be a dict")
+    skills_enabled = state.get("skills_enabled")
+    if skills_enabled is not None and not isinstance(skills_enabled, list):
+        raise TypeError("state.skills_enabled must be a list")
+    system_messages = state.get("system_messages")
+    if system_messages is not None and not isinstance(system_messages, list):
+        raise TypeError("state.system_messages must be a list")
     return {
         "messages": list(state.get("messages") or []),
+        "system_messages": [str(p) for p in (system_messages or [])],
+        "skills_enabled": [str(n) for n in (skills_enabled or [])],
         "iteration": int(state.get("iteration", 0)),
         "stop_loop": bool(state.get("stop_loop", False)),
         "extra": dict(state.get("extra") or {}),
@@ -100,6 +112,62 @@ def _messages_to_dicts(messages: list[Message]) -> list[dict[str, Any]]:
         entry.update(msg.extra)
         result.append(entry)
     return result
+
+
+def _skills_enable_cfg(config: Config) -> list[str] | None:
+    """None = all registered; [] = none; list = whitelist."""
+    raw = config.raw if isinstance(config.raw, dict) else {}
+    skills_cfg = raw.get("skills")
+    if not isinstance(skills_cfg, dict) or "enable" not in skills_cfg:
+        return None
+    enable = skills_cfg["enable"]
+    if enable is None:
+        return None
+    if not isinstance(enable, list):
+        raise TypeError("skills.enable must be a list of skill names")
+    return [str(n) for n in enable]
+
+
+def _seed_skills_enabled(config: Config, registry: HookRegistry) -> list[str]:
+    registered = registry.skills.names()
+    enable = _skills_enable_cfg(config)
+    if enable is None:
+        return list(registered)
+    known = set(registered)
+    for name in enable:
+        if name not in known:
+            print(
+                f"[skills] warning: enable lists unknown skill {name!r}",
+                file=sys.stderr,
+            )
+    allow = set(enable)
+    return [n for n in registered if n in allow]
+
+
+def _peel_system_messages(
+    messages: list[dict[str, Any]],
+    system_messages: list[str],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Move role=system entries into system_messages; return non-system body."""
+    parts = list(system_messages)
+    body: list[dict[str, Any]] = []
+    for msg in messages:
+        if msg.get("role") == "system":
+            content = msg.get("content")
+            if content is not None and str(content) != "":
+                parts.append(str(content))
+        else:
+            body.append(msg)
+    return body, parts
+
+
+def _llm_messages(state: dict[str, Any]) -> list[dict[str, Any]]:
+    """Merge system_messages into one system message for the API / write-back."""
+    body = [m for m in (state.get("messages") or []) if m.get("role") != "system"]
+    parts = [str(p) for p in (state.get("system_messages") or []) if str(p).strip()]
+    if not parts:
+        return body
+    return [{"role": "system", "content": "\n\n".join(parts)}, *body]
 
 
 def _litellm_model(model: str) -> str:
@@ -186,6 +254,16 @@ def _execute_with_retry(
 
 
 def _build_graph(config: Config, registry: HookRegistry):
+    def handle_request(state: AgentState) -> AgentState:
+        working = _copy_state(state)
+        body, system_messages = _peel_system_messages(
+            working["messages"], working["system_messages"]
+        )
+        working["messages"] = body
+        working["system_messages"] = system_messages
+        working["skills_enabled"] = _seed_skills_enabled(config, registry)
+        return _state_update(registry.run("handle_request", _hook_ctx(working, config)))
+
     def before_llm(state: AgentState) -> AgentState:
         return _state_update(registry.run("before_llm", _hook_ctx(state, config)))
 
@@ -198,13 +276,14 @@ def _build_graph(config: Config, registry: HookRegistry):
                 f"or environment variable {config.llm.api_key_env!r}"
             )
         iteration = int(state.get("iteration", 0)) + 1
+        api_messages = _llm_messages(state)
         print(
-            f"Calling LLM (iteration={iteration}) with messages={state['messages']}",
+            f"Calling LLM (iteration={iteration}) with messages={api_messages}",
             file=sys.stderr,
         )
         kwargs: dict[str, Any] = {
             "model": _litellm_model(config.llm.model),
-            "messages": state["messages"],
+            "messages": api_messages,
             "api_key": api_key,
             "api_base": config.llm.base_url,
         }
@@ -213,7 +292,6 @@ def _build_graph(config: Config, registry: HookRegistry):
             kwargs["tools"] = tools
 
         response = litellm.completion(**kwargs)
-        # print(f"Response: {response}", file=sys.stderr)
         choice = response.choices[0].message
         content = getattr(choice, "content", None) or ""
         assistant: dict[str, Any] = {"role": "assistant", "content": content}
@@ -381,12 +459,14 @@ def _build_graph(config: Config, registry: HookRegistry):
         return "end"
 
     graph = StateGraph(AgentState)
+    graph.add_node("handle_request", handle_request)
     graph.add_node("before_llm", before_llm)
     graph.add_node("call_llm", call_llm)
     graph.add_node("after_llm", after_llm)
     graph.add_node("run_tools", run_tools)
     graph.add_node("after_tools", after_tools)
-    graph.add_edge(START, "before_llm")
+    graph.add_edge(START, "handle_request")
+    graph.add_edge("handle_request", "before_llm")
     graph.add_edge("before_llm", "call_llm")
     graph.add_edge("call_llm", "after_llm")
     graph.add_edge("after_llm", "run_tools")
@@ -413,19 +493,24 @@ def run(
     messages = _messages_to_dicts(request.messages)
     initial: AgentState = {
         "messages": messages,
+        "system_messages": [],
+        "skills_enabled": [],
         "iteration": 0,
         "stop_loop": False,
         "extra": {},
     }
     try:
         result = graph.invoke(initial)
-        messages = result["messages"]
         ctx = reg.run("on_result", _hook_ctx(result, config))
-        messages = _state_update(ctx)["messages"]
+        final = _state_update(ctx)
+        # Persist merged system + body so req.toml stays replay-friendly
+        messages = _llm_messages(final)
     except Exception as exc:
         err_ctx = _hook_ctx(
             {
                 "messages": messages,
+                "system_messages": [],
+                "skills_enabled": [],
                 "iteration": 0,
                 "stop_loop": False,
                 "extra": {},

@@ -9,14 +9,16 @@
 
 打造一個**極簡、stateless** 的 AI coding agent（純 Python），讓使用者完全掌握每一次請求與回應。
 
-| 原則 | 含義 |
-|------|------|
-| Stateless 第一 | 每次執行只依完整的 `req.toml`，無隱藏狀態 |
-| 使用者主導 | 可任意修改歷史訊息、tool results、甚至先前 AI 回應 |
-| 極簡核心 | 引擎只負責必要流程 |
-| 高度可擴充 | diff preview、logging、權限、多模型轉換等皆由 middleware 實作 |
-| 不汙染工作目錄 | 無自動 git、無未經確認的檔案變更 |
-| Debug 友好 | 易於 replay、fork 不同 request 版本 |
+
+| 原則           | 含義                                             |
+| ------------ | ---------------------------------------------- |
+| Stateless 第一 | 每次執行只依完整的 `req.toml`，無隱藏狀態                     |
+| 使用者主導        | 可任意修改歷史訊息、tool results、甚至先前 AI 回應              |
+| 極簡核心         | 引擎只負責必要流程                                      |
+| 高度可擴充        | diff preview、logging、權限、多模型轉換等皆由 middleware 實作 |
+| 不汙染工作目錄      | 無自動 git、無未經確認的檔案變更                             |
+| Debug 友好     | 易於 replay、fork 不同 request 版本                   |
+
 
 ---
 
@@ -32,13 +34,14 @@ src/uzcode/
 │   ├── __init__.py
 │   ├── config.py        # 載入 .uzcode/cfg.toml
 │   └── request.py       # 載入 / 寫回 req.toml
-├── engine.py            # 薄核心：LLM ↔ tools ↔ loop
+├── engine.py            # 薄核心：handle_request → LLM ↔ tools ↔ loop
+├── skills/              # SkillRegistry + discover
 ├── tools/
 │   ├── __init__.py
 │   └── registry.py      # 薄註冊表（實作由 middleware 提供）
 └── middleware/
     ├── __init__.py
-    ├── base.py          # hook 介面 + registry.tool()
+    ├── base.py          # hooks + registry.tool() / skill()
     └── loader.py        # 從 .uzcode/mids/ 動態載入
 ```
 
@@ -48,6 +51,9 @@ src/uzcode/
 {work_dir}/
 ├── .uzcode/
 │   ├── cfg.toml             # 全域設定、loop、tool 權限、API Key
+│   ├── skills/              # Skill 檔（使用者放置；僅 */SKILL.md）
+│   │   └── deploy-app/
+│   │       └── SKILL.md
 │   ├── mids/                # 使用者自訂 middleware（外部；同名覆寫內建）
 │   │   ├── preprocesser/
 │   │   └── ...
@@ -58,6 +64,9 @@ src/uzcode/
 src/middlewares/             # 內建 middleware（隨套件）
 ├── logging/
 ├── file_cru/                # read/list/grep + write/edit tools
+├── skills/                  # 載入 skills；目錄 → system_messages；read_* tools
+├── shell/                   # sh tool
+├── preprocesser/            # 展開 @file / @folder（Phase 6）
 └── ...
 ```
 
@@ -109,22 +118,24 @@ src/middlewares/             # 內建 middleware（隨套件）
 
 `file_cru`（create / read / update）：
 
-| Tool | CRU | 職責 |
-|------|-----|------|
-| `read_file` | read | 讀取檔案 |
-| `list_dir` | read | 列出目錄 |
-| `grep` | read | 簡單內容搜尋 |
+
+| Tool         | CRU    | 職責      |
+| ------------ | ------ | ------- |
+| `read_file`  | read   | 讀取檔案    |
+| `list_dir`   | read   | 列出目錄    |
+| `grep`       | read   | 簡單內容搜尋  |
 | `write_file` | create | 建立／覆寫檔案 |
-| `edit_file` | update | 編輯／替換內容 |
+| `edit_file`  | update | 編輯／替換內容 |
+
 
 雙層設定：
 
 1. `middleware.enable` — 是否載入提供 tools 的 mid（如 `file_cru`）
-2. `[tools.<name>]` — 每個要送給 LLM 的 tool：`enable`、`permission`（`ask` \| `approve` \| `custom`）、`preview_diff`、`retry`、`on_failure`  
-   （未在 cfg 定義 `permission` 時一律視為 `ask`；無依 tool 名稱硬編碼）  
-   - `approve`：直接執行  
-   - `ask`：引擎內建 `(Y/n)`  
-   - `custom`：引擎不提問；預設拒絕，由 `before_tool` middleware 清 `skip` 核准或留下拒絕結果
+2. `[tools.<name>]` — 每個要送給 LLM 的 tool：`enable`、`permission`（`ask`  `approve`  `custom`）、`preview_diff`、`retry`、`on_failure`
+  （未在 cfg 定義 `permission` 時一律視為 `ask`；無依 tool 名稱硬編碼）  
+  - `approve`：直接執行  
+  - `ask`：引擎內建 `(Y/n)`  
+  - `custom`：引擎不提問；預設拒絕，由 `before_tool` middleware 清 `skip` 核准或留下拒絕結果
 
 每次 tool 執行走 `before_tool` →（若 `permission = "ask"` 則引擎 `(Y/n)`）→ execute → `after_tool`；`preview_diff` / `custom` UX 由 middleware 實作，handler 本身不做權限判斷。
 
@@ -141,20 +152,72 @@ src/middlewares/             # 內建 middleware（隨套件）
 
 **完成標準**：一次 CLI 呼叫可完成多輪 tool 迴圈，過程全程可從 `req.toml` 重播。
 
-### Phase 5 — 打磨與擴充入口
+### Phase 5 — Skills
 
-- 內建範例：`logging` middleware、`preprocesser`（`@file` / `@folder` 展開 stub）
-- （可選）執行後快照到 `.uzcode/history/`
-- 公開 Python API：
+**專項計畫（權威）**：[plan_feature_skill.md](./plan_feature_skill.md)（Agent Skills 合規套件 + 漸進載入）。若與本節舊述衝突，以專項為準。
 
-```python
-from uzcode import CodingAgent
+兩條來源匯入同一 runtime skill 表；目錄（name + description）經 `system_messages` 注入，全文／附屬檔按需經 tools 載入：
 
-agent = CodingAgent(work_dir="./myproject")
-result = agent.run(request_path="request.toml")
+1. **檔案**：`{work_dir}/.uzcode/skills/**/SKILL.md`（目錄名 = frontmatter `name`）
+2. **程式**：middleware `registry.skill(...)`，執行期加入，**不**寫入 skills 目錄
+
+**引擎契約（系統級）：**
+
+
+| 欄位／節點                        | 職責                                                                                                             |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `handle_request`（一次）         | 引擎：req `system` → `system_messages`；依 `[skills].enable` 注入 `skills_enabled`；再跑 mid hooks（可改變 `skills_enabled`） |
+| `system_messages: list[str]` | mids 只 append；`call_llm` 合併成單一 `role=system` 再送 API；寫回 req 亦用合併結果                                              |
+| `skills_enabled: list[str]`  | 可見 skill 名稱；目錄與 `read_*` 皆以此為準                                                                                 |
+
+
+**執行腳本**：一般 `sh` tool（mid `shell`）；cwd 固定 `work_dir`；skill 本身不可執行。
+
+**分層：**
+
+
+| 層               | 職責                                                                                                                                |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| 核心（薄）           | `SkillRegistry`／`discover`；`registry.skill(...)`；注入 `skills_enabled`；合併 `system_messages`                                         |
+| 內建 mid `skills` | 載入檔案 skills；註冊 `read_skill`／`read_file_in_skill`；`before_llm` 將目錄 append 到 `system_messages`（標記 `<!-- uzcode:skills-catalog -->`） |
+| 內建 mid `shell`  | 註冊 `sh`                                                                                                                           |
+| 其他 mid          | `registry.skill(...)`；於 `handle_request` 改變 `skills_enabled`                                                                      |
+
+
+**Cfg 草圖：**
+
+```toml
+[middleware]
+enable = ["logging", "file_cru", "skills", "shell"]
+
+[skills]
+# 省略 = 全部；enable = [] 全關；enable = ["demo-skill"] 白名單
 ```
 
-**完成標準**：文件與範例足以讓使用者自訂一個 middleware 並掛上。
+**本階段不做**：智慧匹配、skill 內嵌 tools、`src/skills/` pack、mid 寫檔、多根 Cursor／Claude 掃描。
+
+**完成標準**：見 [plan_feature_skill.md](./plan_feature_skill.md) §9。
+
+### Phase 6 — Preprocessor
+
+內建 mid `preprocesser`（`src/middlewares/preprocesser/`；使用者可放 `.uzcode/mids/` 覆寫）：
+
+- `handle_request`：展開訊息中的 `@file path` / `@folder path` stub（或 append `system_messages`）
+- 檢查該 @file/@folder 是否存在，若不存在要向用戶確認是否繼續 (y/N)
+- v1 stub 即可（讀檔 / 列目錄成文字）；不做 RAG
+
+**完成標準**：req 中含 `@file` / `@folder` 時，送入 LLM 前已展開為實際內容。
+
+### Phase 7 — History
+
+執行成功後可選快照 request 到 `.uzcode/history/`（時間戳或 hash 複本）。掛點：`on_result` mid，或 `engine.run` 成功後的薄 helper。須經 cfg 開啟。
+
+**完成標準**：開啟後每次成功執行在 `.uzcode/history/` 留下可 replay 的 request 複本。
+
+### Pending（未排期）
+
+- 公開 API 打磨：`CodingAgent(work_dir).run(request_path=...)`
+- README（安裝、CLI、cfg / req 契約、自訂 middleware）
 
 ---
 
@@ -197,10 +260,15 @@ permission = "ask"
 preview_diff = true
 
 [middleware]
-enable = ["logging", "file_cru"]
+enable = ["logging", "file_cru", "skills"]
+
+[skills]
+# omit = all discovered; empty = inject none
+# enable = ["my_skill"]
 
 [middleware.order.before_llm]
 logging = 10
+skills = 20
 
 [middleware.order.after_llm]
 logging = 100
@@ -267,10 +335,13 @@ Phase 0 骨架
         → Phase 2 Middleware
             → Phase 3 Tools
                 → Phase 4 auto_loop
-                    → Phase 5 範例與 API 打磨
+                    → Phase 5 Skills
+                        → Phase 6 Preprocessor
+                            → Phase 7 History
+Pending: CodingAgent API、README、內建 skill pack、智慧匹配 …
 ```
 
 ---
 
-**專案狀態**：Phase 0–4 完成（`auto_loop`：有 `tool_calls` 則繼續，無則停；達 `max_iterations` 亦停）；下一步 Phase 5  
+**專案狀態**：Phase 0–5 完成（Skills：`handle_request`／`skills_enabled`／`system_messages` + mid `shell`/`sh`）；下一步 Phase 6 Preprocessor
 **參考**：與 Aider、OpenHands 相比，uzcode 專注透明度、可控性與極簡，方便 debug / replay。

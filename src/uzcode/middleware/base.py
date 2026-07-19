@@ -6,11 +6,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from uzcode.skills.registry import SkillRegistry
 from uzcode.tools.registry import ToolHandler, ToolRegistry
 
 HookFn = Callable[[dict[str, Any]], dict[str, Any]]
 
 HOOKS = (
+    "handle_request",
     "before_llm",
     "after_llm",
     "before_tool",
@@ -35,10 +37,12 @@ class HookRegistry:
         self,
         order_overrides: dict[str, dict[str, int]] | None = None,
         tools: ToolRegistry | None = None,
+        skills: SkillRegistry | None = None,
     ) -> None:
         self._order_overrides = order_overrides or {}
         self._hooks: dict[str, list[_Registration]] = {h: [] for h in HOOKS}
         self.tools = tools if tools is not None else ToolRegistry()
+        self.skills = skills if skills is not None else SkillRegistry()
 
     def on(self, hook: str, fn: HookFn, *, order: int, name: str) -> None:
         if hook not in self._hooks:
@@ -61,6 +65,24 @@ class HookRegistry:
             description=description,
             parameters=parameters,
             handler=handler,
+        )
+
+    def skill(
+        self,
+        name: str,
+        *,
+        description: str = "",
+        body: str,
+        root_relpath: str | None = None,
+        source: str = "code:register",
+    ) -> None:
+        """Register a runtime (code) skill; does not write to the skills directory."""
+        self.skills.register(
+            name,
+            description=description,
+            body=body,
+            root_relpath=root_relpath,
+            source=source,
         )
 
     def _effective_order(self, hook: str, name: str, default: int) -> int:
