@@ -86,13 +86,14 @@ def grep(args: dict[str, Any], ctx: dict[str, Any]) -> str:
 
 
 def write_file(args: dict[str, Any], ctx: dict[str, Any]) -> str:
-    path = resolve_under_work_dir(_work_dir(ctx), str(args.get("path", "")))
+    path_str = str(args.get("path", ""))
+    path = resolve_under_work_dir(_work_dir(ctx), path_str)
     content = args.get("content")
     if content is None:
         raise ValueError("content is required")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(str(content), encoding="utf-8")
-    return f"Wrote {len(str(content))} chars to {path}"
+    return f"Wrote {len(str(content))} chars to {path_str}"
 
 
 def edit_file(args: dict[str, Any], ctx: dict[str, Any]) -> str:

@@ -181,5 +181,5 @@ def summarize_task(args: dict[str, Any], ctx: dict[str, Any]) -> str:
     extra["task_summary_file"] = resolved
     state["stop_loop"] = True
 
-    print(f"[task_summary] wrote {resolved}", file=sys.stdout)
-    return f"Task summary written to {resolved}. It will open when the run finishes (if auto_open)."
+    print(f"[task_summary] wrote {out_rel}", file=sys.stdout)
+    return f"Task summary written to {out_rel}. It will open when the run finishes (if auto_open)."
