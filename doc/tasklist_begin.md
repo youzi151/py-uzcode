@@ -103,7 +103,24 @@
 
 ---
 
-## Phase 7 — History
+## Phase 7 — Web Fetch/Search
+
+**完成標準**：啟用 `web` mid 後，可經 tool（與 URL mention）觸發 Web Search／Fetch；結果寫入 messages，可 replay。
+
+依賴：`ddgs`（search；勿用舊名 `duckduckgo-search`）、`httpx` + `trafilatura`（fetch）。詳見 [plan_begin.md](./plan_begin.md) Phase 7。
+
+- [ ] `pyproject.toml`：加入 `ddgs`、`httpx`、`trafilatura`
+- [ ] 內建 mid `web`：註冊 `web_search`（ddgs text）、`web_fetch`（httpx + trafilatura → markdown／text，截斷）
+- [ ] 尊重 `cfg.toml`：`[tools.web_search]`／`[tools.web_fetch]` 的 `enable`、`permission`；可選 `max_results`／`max_chars`／`timeout_sec`
+- [ ] `handle_request`：`@http(s)://...` 短索引展開；`#http(s)://...` 預先 `web_fetch` 合成 tool result（已有則跳過）；失敗時 `Continue? (y/N)`
+- [ ] 範例：`examples/` 一組含 `#https://...` 或 `web_search` 的 req／cfg（middleware.enable 含 `"web"`）
+- [ ] 手動驗收：tool 搜尋／抓頁可跑通；`#https://...` 預載；`enable=false` 不上送 LLM
+
+**本階段不做**：搜尋 mention 語法、JS 渲染、付費搜尋 API、快取／index。
+
+---
+
+## Phase 8 — History
 
 **完成標準**：cfg 開啟後，每次成功執行在 `.uzcode/history/` 留下可 replay 的 request 複本。
 
@@ -144,4 +161,4 @@
 
 ---
 
-**建議順序**：Phase 0 → 1 → 2（Middleware）→ 3（Tools）→ 4 → 5（Skills）→ 6（Mention）→ 7（History）；其餘見 Pending
+**建議順序**：Phase 0 → 1 → 2（Middleware）→ 3（Tools）→ 4 → 5（Skills）→ 6（Mention）→ 7（Web）→ 8（History）；其餘見 Pending

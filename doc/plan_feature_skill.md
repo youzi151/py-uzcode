@@ -465,7 +465,7 @@ def register(registry, config) -> None:
 | `engine.call_llm` | 合併 `system_messages` → API；寫回 req 同邏輯 |
 | Tools 通道 | `read_skill`／`read_file_in_skill`／`sh` |
 | Phase 6 `mention` | `handle_request`：展開 `@` / 預載 `#` tool results |
-| Phase 7 History | 快照含合併後 system 與 tool messages 即可 |
+| Phase 8 History | 快照含合併後 system 與 tool messages 即可 |
 
 ---
 
@@ -512,7 +512,7 @@ Step 1  SkillRegistry + discover
             → Step 4  驗收
 ```
 
-之後可接 Phase 7 History；Pending：多根發現路徑、`src/skills/` pack、可選 `run_skill_script`、`paths`／`disable-model-invocation`、`allowed-tools` 執行語意。
+之後可接 Phase 7 Web／Phase 8 History；Pending：多根發現路徑、`src/skills/` pack、可選 `run_skill_script`、`paths`／`disable-model-invocation`、`allowed-tools` 執行語意。
 
 ---
 

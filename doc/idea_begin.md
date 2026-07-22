@@ -26,7 +26,7 @@
 │   │   │   └─ __init__.py
 │   │   ├── logging
 │   │   │   └─ __init__.py
-│   │   ├── tool_websearch
+│   │   ├── web              # web_search / web_fetch；#http(s):// 預載
 │   │   │   └─ __init__.py
 │   │   └── ...
 │   └── history/             # (可選) 歷史 request 快照
@@ -82,6 +82,7 @@
 - `read_file` / `write_file` / `edit_file` / `list_dir` / `grep`
 - `read_skill` / `read_file_in_skill`（skills mid）
 - `sh`（shell mid；cwd = work_dir）
+- `web_search` / `web_fetch`（web mid；`ddgs` + `httpx`/`trafilatura`）
 
 不內建 RAG、codebase indexing 等複雜功能。
 
@@ -111,7 +112,7 @@ result = agent.run(request_path="request.toml")
 
 ## 未來擴充方向
 
-- Skills（`.uzcode/skills/`）／Mention（`@file` / `#skill`）／History 快照（見 plan Phase 5–7）
+- Skills／Mention／Web Search-Fetch／History 快照（見 plan Phase 5–8）
 - 多模型支援（透過 middleware）
 - 更多基礎 tools
 - 簡單 CLI REPL（可選）
@@ -122,5 +123,5 @@ result = agent.run(request_path="request.toml")
 
 ---
 
-**專案狀態**：Phase 0–6 完成（Mention：`mention`）；下一步 Phase 7 History
+**專案狀態**：Phase 0–6 完成（Mention）；下一步 Phase 7 Web Search/Fetch
 **核心原則**：Keep it simple, give control to the user.

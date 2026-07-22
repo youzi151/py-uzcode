@@ -56,8 +56,9 @@ src/uzcode/
 │   │       └── SKILL.md
 │   ├── mids/                # 使用者自訂 middleware（外部；同名覆寫內建）
 │   │   ├── mention/     # 展開 @ / 預載 #（Phase 6）
+│   │   ├── web/         # web_search / web_fetch（Phase 7）
 │   │   └── ...
-│   └── history/             # （可選）歷史 request 快照
+│   └── history/             # （可選）歷史 request 快照（Phase 8）
 ├── req.toml                 # 本次請求（可由 CLI 指定其他檔案）
 └── ... (專案檔案)
 
@@ -67,6 +68,7 @@ src/middlewares/             # 內建 middleware（隨套件）
 ├── skills/                  # 載入 skills；目錄 → system_messages；read_* tools
 ├── shell/                   # sh tool
 ├── mention/             # 展開 @file / @folder；預載 #file / #skill（Phase 6）
+├── web/                 # web_search / web_fetch；預載 #http(s)://（Phase 7）
 └── ...
 ```
 
@@ -210,7 +212,56 @@ enable = ["logging", "file_cru", "skills", "shell"]
 
 **完成標準**：req 中含 `@file` / `@folder` / `#file_path` / `#skill_name` 時，送入 LLM 前已展開/讀入為實際內容。
 
-### Phase 7 — History
+### Phase 7 — Web Search/Fetch
+
+內建 mid `web`（`src/middlewares/web/`；使用者可放 `.uzcode/mids/` 覆寫）：
+
+| Tool          | 職責 |
+| ------------- | ---- |
+| `web_search`  | 關鍵字搜尋，回傳標題／URL／摘要列表 |
+| `web_fetch`   | 抓取單一 URL，抽出可讀正文（markdown／text），截斷後回傳 |
+
+**依賴選擇（建議）：**
+
+| 用途 | 套件 | 理由 |
+| ---- | ---- | ---- |
+| Search | **`ddgs`**（原 `duckduckgo-search`，已更名） | 免 API key；text search API 穩定；v9+ 為 metasearch（可選 backend）。**不要**再裝舊名 `duckduckgo-search` |
+| Fetch HTTP | **`httpx`** | 現代 HTTP client；timeout／redirect 好控 |
+| HTML → 正文 | **`trafilatura`** | 去導覽／廣告、可輸出 markdown；比裸 `html2text` 更適 LLM |
+
+**不採用（v1）：** Tavily／SerpAPI／Brave Search API（需 key／付費）；Playwright／瀏覽器渲染（過重）；自幹 DuckDuckGo HTML scrape。
+
+**Mention（與 Phase 6 對齊；由 `web` mid 的 `handle_request` 處理 URL，避免改壞 path mention）：**
+
+- `@http(s)://...` → 短索引（url／status／content-type／title 若可得），取代原字串
+- `#http(s)://...` → 預先呼叫 `web_fetch`，合成 assistant `tool_calls` + `role=tool`；已有對應 result 則跳過
+- 失敗（非 2xx、timeout、抽文失敗）時比照 mention：`Continue? (y/N)`
+- **Search 不做 mention 語法**（查詢常含空白；與 Phase 6「無空白」契約衝突）→ 僅經 `web_search` tool
+
+**Cfg 草圖：**
+
+```toml
+[middleware]
+enable = ["logging", "file_cru", "skills", "shell", "mention", "web"]
+
+[tools.web_search]
+enable = true
+permission = "approve"   # 網路 I/O；預設 approve，可改 ask
+# max_results = 5
+# backend = "auto"       # ddgs：auto | duckduckgo | bing | ...
+
+[tools.web_fetch]
+enable = true
+permission = "approve"
+# max_chars = 32768
+# timeout_sec = 30
+```
+
+**本階段不做**：JS 渲染、付費搜尋 API、本機快取／index、搜尋 mention 語法、下載二進位／附件。
+
+**完成標準**：啟用 `web` mid 後，LLM 可呼叫 `web_search`／`web_fetch`；req 含 `#https://...` 時送入 LLM 前已預載 fetch result；結果寫回 messages，可 replay。
+
+### Phase 8 — History
 
 執行成功後可選快照 request 到 `.uzcode/history/`（時間戳或 hash 複本）。掛點：`on_result` mid，或 `engine.run` 成功後的薄 helper。須經 cfg 開啟。
 
@@ -261,8 +312,16 @@ enable = true
 permission = "ask"
 preview_diff = true
 
+[tools.web_search]
+enable = true
+permission = "approve"
+
+[tools.web_fetch]
+enable = true
+permission = "approve"
+
 [middleware]
-enable = ["logging", "file_cru", "skills"]
+enable = ["logging", "file_cru", "skills", "shell", "mention", "web"]
 
 [skills]
 # omit = all discovered; empty = inject none
@@ -339,11 +398,12 @@ Phase 0 骨架
                 → Phase 4 auto_loop
                     → Phase 5 Skills
                         → Phase 6 Mention (`mention`)
-                            → Phase 7 History
+                            → Phase 7 Web (`web_search` / `web_fetch`)
+                                → Phase 8 History
 Pending: CodingAgent API、README、內建 skill pack、智慧匹配 …
 ```
 
 ---
 
-**專案狀態**：Phase 0–6 完成（Mention：`mention` mid — `@` 索引展開、`#` 預載 tool results）；下一步 Phase 7 History
+**專案狀態**：Phase 0–6 完成（Mention）；下一步 Phase 7 Web Search/Fetch（`ddgs` + `httpx`/`trafilatura`）
 **參考**：與 Aider、OpenHands 相比，uzcode 專注透明度、可控性與極簡，方便 debug / replay。
