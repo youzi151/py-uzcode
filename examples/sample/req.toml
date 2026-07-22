@@ -1,11 +1,3 @@
-[[tool_calls]]
-id = "aUOKTovz4HDk5LJFtQqRBbIhNw2DIeWN"
-type = "function"
-
-[tool_calls.function]
-name = "write_file"
-arguments = "{\"path\": \"./test1to10.md\", \"content\": \"[1,2,3,4,5,6,7,8,9,10]\"}"
-
 [[messages]]
 role = "system"
 content = "You are a coding agent. Be concise and helpful."
@@ -13,33 +5,3 @@ content = "You are a coding agent. Be concise and helpful."
 [[messages]]
 role = "user"
 content = "write 1 to 10 as json array in \"./test1to10.md\""
-
-[[messages]]
-role = "assistant"
-content = ""
-
-[[messages]]
-role = "tool"
-content = "Wrote 22 chars to F:\\Project\\uzcode\\examples\\sample\\test1to10.md"
-tool_call_id = "aUOKTovz4HDk5LJFtQqRBbIhNw2DIeWN"
-
-[[messages]]
-role = "user"
-content = "change 1 to 10 to only odd number"
-
-[[messages]]
-role = "assistant"
-content = ""
-
-[[tool_calls]]
-id = "cwuzg3xGhn3lvgFo0hZVBqVadl2Ux45a"
-type = "function"
-
-[tool_calls.function]
-name = "edit_file"
-arguments = "{\"path\": \"./test1to10.md\", \"old_string\": \"[1,2,3,4,5,6,7,8,9,10]\", \"new_string\": \"[1,3,5,7,9]\"}"
-
-[[messages]]
-role = "tool"
-content = "Updated F:\\Project\\uzcode\\examples\\sample\\test1to10.md (1 replacement)"
-tool_call_id = "cwuzg3xGhn3lvgFo0hZVBqVadl2Ux45a"

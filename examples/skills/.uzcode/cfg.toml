@@ -1,0 +1,76 @@
+[llm]
+base_url = "http://127.0.0.1:8081/v1"
+api_key = "1"
+model = "1"
+
+[loop]
+auto_loop = true
+max_iterations = 20
+
+[tools.read_file]
+enable = true
+permission = "approve"
+
+[tools.list_dir]
+enable = true
+permission = "approve"
+
+[tools.grep]
+enable = true
+permission = "approve"
+
+[tools.write_file]
+enable = true
+permission = "ask"
+preview_diff = true
+retry = 0
+on_failure = "abort"
+
+[tools.edit_file]
+enable = true
+permission = "ask"
+preview_diff = true
+retry = 0
+on_failure = "abort"
+
+[tools.summarize_task]
+enable = true
+permission = "approve"
+
+[tools.read_skill]
+enable = true
+permission = "approve"
+
+[tools.read_file_in_skill]
+enable = true
+permission = "approve"
+
+[tools.sh]
+enable = true
+permission = "ask"
+timeout_sec = 60
+
+[middleware]
+enable = ["logging", "file_cru", "task_summary", "skills", "shell", "mention"]
+
+# [skills]
+# omit enable = list all discovered + code-registered skills
+# enable = []              # no catalog, no read_skill tools
+# enable = ["demo-skill"]  # whitelist only
+
+[middleware.task_summary]
+auto_open = true
+task_summary_path = ".uzcode/summaries"
+
+[middleware.order.handle_request]
+mention = 10
+
+[middleware.order.before_llm]
+logging = 10
+skills = 20
+
+[middleware.order.after_llm]
+logging = 100
+
+[middleware.order.before_tool]
+file_cru = 50
