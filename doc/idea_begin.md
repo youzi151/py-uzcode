@@ -22,7 +22,7 @@
 │   │   │   └── SKILL.md
 │   │   └── ...
 │   ├── mids/                # 使用者自訂 middleware
-│   │   ├── preprocesser     # 自動展開 `@file`、`@folder` 等標記
+│   │   ├── mention      # 展開 `@file`/`@folder`；預載 `#file`/`#skill`
 │   │   │   └─ __init__.py
 │   │   ├── logging
 │   │   │   └─ __init__.py
@@ -111,7 +111,7 @@ result = agent.run(request_path="request.toml")
 
 ## 未來擴充方向
 
-- Skills（`.uzcode/skills/`）／Preprocessor（`@file` / `@folder`）／History 快照（見 plan Phase 5–7）
+- Skills（`.uzcode/skills/`）／Mention（`@file` / `#skill`）／History 快照（見 plan Phase 5–7）
 - 多模型支援（透過 middleware）
 - 更多基礎 tools
 - 簡單 CLI REPL（可選）
@@ -122,5 +122,5 @@ result = agent.run(request_path="request.toml")
 
 ---
 
-**專案狀態**：Phase 0–5 完成（Skills + \sh\uff1b見 plan_feature_skill）；下一步 Phase 6 Preprocessor
+**專案狀態**：Phase 0–6 完成（Mention：`mention`）；下一步 Phase 7 History
 **核心原則**：Keep it simple, give control to the user.

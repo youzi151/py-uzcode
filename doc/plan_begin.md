@@ -55,7 +55,7 @@ src/uzcode/
 │   │   └── deploy-app/
 │   │       └── SKILL.md
 │   ├── mids/                # 使用者自訂 middleware（外部；同名覆寫內建）
-│   │   ├── preprocesser/
+│   │   ├── mention/     # 展開 @ / 預載 #（Phase 6）
 │   │   └── ...
 │   └── history/             # （可選）歷史 request 快照
 ├── req.toml                 # 本次請求（可由 CLI 指定其他檔案）
@@ -66,7 +66,7 @@ src/middlewares/             # 內建 middleware（隨套件）
 ├── file_cru/                # read/list/grep + write/edit tools
 ├── skills/                  # 載入 skills；目錄 → system_messages；read_* tools
 ├── shell/                   # sh tool
-├── preprocesser/            # 展開 @file / @folder（Phase 6）
+├── mention/             # 展開 @file / @folder；預載 #file / #skill（Phase 6）
 └── ...
 ```
 
@@ -198,15 +198,17 @@ enable = ["logging", "file_cru", "skills", "shell"]
 
 **完成標準**：見 [plan_feature_skill.md](./plan_feature_skill.md) §9。
 
-### Phase 6 — Preprocessor
+### Phase 6 — Mention
 
-內建 mid `preprocesser`（`src/middlewares/preprocesser/`；使用者可放 `.uzcode/mids/` 覆寫）：
+內建 mid `mention`（`src/middlewares/mention/`；使用者可放 `.uzcode/mids/` 覆寫）：
 
-- `handle_request`：展開訊息中的 `@file path` / `@folder path` stub（或 append `system_messages`）
-- 檢查該 @file/@folder 是否存在，若不存在要向用戶確認是否繼續 (y/N)
-- v1 stub 即可（讀檔 / 列目錄成文字）；不做 RAG
+- 在 `handle_request` 掃描並展開 `@file_path` / `@folder_path`：
+  - `@file` → 短索引（path / size / mtime），取代原字串
+  - `@folder` → 目錄 listing 字串長度 < 100 時展開 listing，否則只保留 folder path
+- 在 `handle_request` 掃描所有 user message 的 `#file_path` / `#skill_name`，事先呼叫 `read_file` / `read_skill`，以合成 assistant `tool_calls` + `role=tool` 寫入 messages；已有對應 tool result 則跳過。路徑不支援空白。
+- 對象不存在時提示 `Abort? (Y/n)`：Y/Enter 中止；`n` 繼續（允許之後再建立該路徑）
 
-**完成標準**：req 中含 `@file` / `@folder` 時，送入 LLM 前已展開為實際內容。
+**完成標準**：req 中含 `@file` / `@folder` / `#file_path` / `#skill_name` 時，送入 LLM 前已展開/讀入為實際內容。
 
 ### Phase 7 — History
 
@@ -336,12 +338,12 @@ Phase 0 骨架
             → Phase 3 Tools
                 → Phase 4 auto_loop
                     → Phase 5 Skills
-                        → Phase 6 Preprocessor
+                        → Phase 6 Mention (`mention`)
                             → Phase 7 History
 Pending: CodingAgent API、README、內建 skill pack、智慧匹配 …
 ```
 
 ---
 
-**專案狀態**：Phase 0–5 完成（Skills：`handle_request`／`skills_enabled`／`system_messages` + mid `shell`/`sh`）；下一步 Phase 6 Preprocessor
+**專案狀態**：Phase 0–6 完成（Mention：`mention` mid — `@` 索引展開、`#` 預載 tool results）；下一步 Phase 7 History
 **參考**：與 Aider、OpenHands 相比，uzcode 專注透明度、可控性與極簡，方便 debug / replay。

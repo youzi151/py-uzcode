@@ -24,7 +24,7 @@ Skills 是「可發現的任務手冊」，不是可執行外掛：標準不定�
 |------|------|
 | 格式合規 | 檔案 skill **必須**符合 Agent Skills 規格（見 §4）；不自創不相容的套件格式 |
 | 雙來源合一 | 檔案 skills + middleware 程式註冊 → 同一 runtime 表 |
-| 使用者可控 | `[skills].enable` 由**引擎**種子 `state.skills_enabled`；mids 可在 `handle_request` 再改變該列表；省略 = 全部；空列表 = 無目錄／`read_*` 皆拒 |
+| 使用者可控 | `[skills].enable` 由**引擎**注入 `state.skills_enabled`；mids 可在 `handle_request` 再改變該列表；省略 = 全部；空列表 = 無目錄／`read_*` 皆拒 |
 | 漸進載入 | 對齊標準三級披露：`system_messages` 只放 metadata 目錄；全文／附屬資源按需載入（省 token） |
 | Skill 不可執行 | 標準與本計畫一致：Skill 本身無 runtime；跑腳本 = 取得路徑後轉呼叫既有 `sh` |
 | 便利 tools 非規格 | `read_skill`／`read_file_in_skill` 為 uzcode 實作細節，**不**要求 skill 作者為這兩個 tool 寫特殊標記 |
@@ -66,7 +66,7 @@ Skills 是「可發現的任務手冊」，不是可執行外掛：標準不定�
 ```text
 handle_request（一次）：
   引擎 peel req system → system_messages
-  引擎依 cfg 種子 skills_enabled
+  引擎依 cfg 注入 skills_enabled
   mids 可改變 skills_enabled／registry.skill(...)
     ↓
 before_llm：skills mid 將目錄 append 到 system_messages（僅 name + description）
@@ -93,7 +93,7 @@ sh：對 workdir_relative_path 執行（Skill 本身不執行）
 ```text
 ┌─────────────────────────────────────────────────────────┐
 │  核心 engine（系統級）                                     │
-│  · handle_request：peel system；種子 skills_enabled       │
+│  · handle_request：peel system；注入 skills_enabled       │
 │  · SkillRegistry + registry.skill(...)                    │
 │  · call_llm：合併 system_messages → 單一 system           │
 │  · discover／parse 合規 SKILL.md（可由 mid 呼叫）         │
@@ -170,7 +170,7 @@ src/uzcode/
 │   ├── registry.py
 │   └── discover.py
 ├── middleware/base.py       # HookRegistry.skill(...)；HOOKS 含 handle_request
-├── engine.py                # handle_request 種子／peel；call_llm 合併 system_messages
+├── engine.py                # handle_request 可注入；call_llm 合併 system_messages
 └── ...
 
 src/middlewares/skills/
@@ -276,14 +276,14 @@ class Skill:
 
 1. 先載入檔案 skills（僅合規 `SKILL.md`；skills mid `register()`）
 2. 再套用 `registry.skill(...)`（同名：**後註冊覆寫**；可在 `register()` 或 `handle_request`）
-3. **引擎**於 `handle_request` 依 `[skills].enable` 種子 `state["skills_enabled"]`
+3. **引擎**於 `handle_request` 依 `[skills].enable` 注入 `state["skills_enabled"]`
 4. 其他 mid 可於 `handle_request` **改變** `skills_enabled`（例如移除 = ban）
 5. 目錄與 `read_*` 可見範圍皆以最終 `skills_enabled` 為準
 
 ### 5.1b `AgentState`（系統級欄位）
 
 ```python
-skills_enabled: list[str]      # 引擎種子；mids 在 handle_request 可改
+skills_enabled: list[str]      # 引擎注入；mids 在 handle_request 可改
 system_messages: list[str]     # req system peel 進來；mids 只 append
 # messages 不再承載多源 system 拼接；call_llm 合併 system_messages
 ```
@@ -295,23 +295,23 @@ system_messages: list[str]     # req system peel 進來；mids 只 append
 enable = ["logging", "file_cru", "skills", "shell"]
 
 [skills]
-# 省略鍵 = 引擎種子為全部已註冊 name
+# 留空 = 引擎注入為全部已註冊 name
 # enable = []              # 空列表 → skills_enabled = []
 # enable = ["deploy-app"]  # 白名單 ∩ 已註冊
 
 [middleware.order.before_llm]
 logging = 10
 skills = 20
-# Phase 6 preprocesser 建議 > 20（skills 目錄先、展開後）
+# Phase 6 mention 建議在 handle_request（skills 已注入 skills_enabled）
 ```
 
-| `skills.enable` | 行為（引擎種子） |
+| `skills.enable` | 行為（引擎注入） |
 |-----------------|------------------|
 | 鍵省略／未設定 | `skills_enabled` = 全部已註冊 name |
 | `[]` | `skills_enabled` = `[]`（目錄為空；`read_*` 皆拒） |
 | `["a", "b"]` | 僅列出的已註冊 name（未知 name 可警告 stderr，不中斷） |
 
-`middleware.enable` 不含 `"skills"` 時：不載入 mid → 無目錄、無 skill 讀取 tools（`skills_enabled` 仍可能被種子為空／僅程式註冊，視其他 mid 而定）。
+`middleware.enable` 不含 `"skills"` 時：不載入 mid → 無目錄、無 skill 讀取 tools（`skills_enabled` 仍可能被注入為空／僅程式註冊，視其他 mid 而定）。
 
 ### 5.3 便利 tools（uzcode 執行層；非 Agent Skills 規格）
 
@@ -370,7 +370,7 @@ read_file_in_skill(...) 或已知 workdir_relative_path
 
 **流程：**
 
-1. `handle_request`：引擎將 req 內 `role=system` peel 進 `system_messages`；種子 `skills_enabled`。
+1. `handle_request`：引擎將 req 內 `role=system` peel 進 `system_messages`；注入 `skills_enabled`。
 2. skills mid `before_llm`：若 `system_messages` 尚無 `<!-- uzcode:skills-catalog -->`，依 `skills_enabled` 組目錄區塊並 **append** 到 `system_messages`。
 3. **不**把各 skill 的 `body` 寫進目錄（對齊標準 Level 1）。
 4. **不**直接改 `messages` 裡的 system（多源 system 一律走 `system_messages`）。
@@ -422,7 +422,7 @@ def register(registry, config) -> None:
 ```
 
 程式註冊的 `name` 建議仍遵守標準命名規則，以便與檔案 skill 同一套過濾／工具契約。  
-若在 `handle_request` 才 `registry.skill(...)`，需自行把 name 加進 `skills_enabled`（引擎種子早於 mid hooks）。
+若在 `handle_request` 才 `registry.skill(...)`，需自行把 name 加進 `skills_enabled`（引擎注入早於 mid hooks）。
 
 ---
 
@@ -440,7 +440,7 @@ def register(registry, config) -> None:
 
 ### Step 2 — 引擎 `handle_request`／`skills_enabled`／`system_messages` + mid `skills`
 
-- [x] `handle_request` 節點；種子 `skills_enabled`；peel system → `system_messages`
+- [x] `handle_request` 節點；注入 `skills_enabled`；peel system → `system_messages`
 - [x] `call_llm` 合併 `system_messages`；寫回 req 用合併結果
 - [x] mid `skills`：discover + `read_*`；`before_llm` append 目錄到 `system_messages`
 - [x] mid `shell`：`sh` tool
@@ -460,11 +460,11 @@ def register(registry, config) -> None:
 
 | 元件 | 關係 |
 |------|------|
-| `engine.handle_request` | 一次：peel system、種子 `skills_enabled`、跑 mid hooks |
+| `engine.handle_request` | 一次：peel system、注入 `skills_enabled`、跑 mid hooks |
 | `engine.before_llm` | skills mid append 目錄到 `system_messages` |
 | `engine.call_llm` | 合併 `system_messages` → API；寫回 req 同邏輯 |
 | Tools 通道 | `read_skill`／`read_file_in_skill`／`sh` |
-| Phase 6 `preprocesser` | 建議 append／改 `system_messages` 或 messages；order > skills |
+| Phase 6 `mention` | `handle_request`：展開 `@` / 預載 `#` tool results |
 | Phase 7 History | 快照含合併後 system 與 tool messages 即可 |
 
 ---
@@ -512,7 +512,7 @@ Step 1  SkillRegistry + discover
             → Step 4  驗收
 ```
 
-之後可接 Phase 6 Preprocessor；Pending：多根發現路徑、`src/skills/` pack、可選 `run_skill_script`、`paths`／`disable-model-invocation`、`allowed-tools` 執行語意。
+之後可接 Phase 7 History；Pending：多根發現路徑、`src/skills/` pack、可選 `run_skill_script`、`paths`／`disable-model-invocation`、`allowed-tools` 執行語意。
 
 ---
 

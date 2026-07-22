@@ -21,8 +21,6 @@
 
 ---
 
-
-
 ## Phase 1 — 薄引擎（無 tools）
 
 **完成標準**：單輪對話可跑通，結果可透明寫回 TOML。
@@ -36,8 +34,6 @@
 
 ---
 
-
-
 ## Phase 2 — Middleware 系統
 
 **完成標準**：不改核心即可從 `src/middlewares/` 與 `.uzcode/mids/` 載入並執行 middleware（至少繞 LLM）；before/after tool hooks 已定義。
@@ -50,8 +46,6 @@
 - [x] 手動驗收：掛上 middleware 後 LLM 路徑會被攔截／記錄，無需改引擎
 
 ---
-
-
 
 ## Phase 3 — Tools（`file_cru` middleware）
 
@@ -67,8 +61,6 @@
 
 ---
 
-
-
 ## Phase 4 — Loop 控制
 
 **完成標準**：一次 CLI 可完成多輪 tool 迴圈；過程可從 `req.toml` 檢視。
@@ -83,8 +75,6 @@
 - [x] 手動驗收：多 tool 任務一次跑完
 
 ---
-
-
 
 ## Phase 5 — Skills
 
@@ -103,19 +93,15 @@
 
 ---
 
+## Phase 6 — Mention
 
+**完成標準**：掃描 req 內所有 user message 含 `@file_path` / `@folder_path ...等 mention` 時，在送入 LLM 前已預先讀取相關檔案路徑，展開取代message的mention原字串，或者針對 #file_path #skill_path 使用 read_file / read_skill讀取內容並預先填入 tool call result message。
 
-## Phase 6 — Preprocessor
-
-**完成標準**：req 含 `@file` / `@folder` 時，送入 LLM 前已展開。
-
-- [ ] 內建 mid `preprocesser`：`before_llm` 展開 `@file path` / `@folder path` stub
-- [ ] 與 `skills` 並用時：skills 目錄在 `system_messages`；preprocesser order 建議 > skills
-- [ ] 範例 req + 手動驗收：標記展開為檔案／目錄文字；不做 RAG
+- [x] 內建 mid ：mention；在 `handle_request` 掃描並展開 `@file_path`（短索引）／`@folder_path`（listing < 100 字元則展開，否則僅 path）
+- [x] 內建 mid ：mention；在 `handle_request` 掃描所有 user `#file_path` / `#skill_name`，事先使用 `read_file` / `read_skill` 合成 tool result 寫入 messages；已有 result 則跳過
+- [x] 對象不存在時 `Continue? (y/N)`（`y` 繼續、`N` 中止）；路徑不含空白
 
 ---
-
-
 
 ## Phase 7 — History
 
@@ -126,8 +112,6 @@
 - [ ] 手動驗收：執行後 history 目錄有複本，可當 `--req` replay
 
 ---
-
-
 
 ## Pending（未排期）
 
@@ -140,8 +124,6 @@
 
 ---
 
-
-
 ## 明確不做（v1）
 
 以下不開任務，避免 scope creep：
@@ -153,8 +135,6 @@
 
 ---
 
-
-
 ## 整體驗收（全部 Phase 完成後勾選）
 
 - [ ] 一次 CLI：載入 `req.toml` → LLM + tools 迴圈 → 結果透明寫回（或指定輸出）
@@ -164,4 +144,4 @@
 
 ---
 
-**建議順序**：Phase 0 → 1 → 2（Middleware）→ 3（Tools）→ 4 → 5（Skills）→ 6（Preprocessor）→ 7（History）；其餘見 Pending
+**建議順序**：Phase 0 → 1 → 2（Middleware）→ 3（Tools）→ 4 → 5（Skills）→ 6（Mention）→ 7（History）；其餘見 Pending

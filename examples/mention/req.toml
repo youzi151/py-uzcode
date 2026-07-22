@@ -1,0 +1,7 @@
+[[messages]]
+role = "system"
+content = "You are a coding agent. Be concise and helpful.\n\n<!-- uzcode:skills-catalog -->\nAvailable skills (progressive load):\nWhen a skill is relevant, call read_skill(name) to load its instructions.\nFor files under a skill (scripts/, references/, assets/), call\nread_file_in_skill(name, path) — use the returned workdir_relative_path with sh.\n\n- demo-skill: Demonstrate uzcode skills progressive loading. Use when the user asks about demo-skill, sample skills, or verifying skill discovery and scripts.\n<!-- uzcode:skills-catalog-end -->"
+
+[[messages]]
+role = "user"
+content = "find the user name in @files , #files/my_name.txt , #demo-skill , then write a file into @./answer.txt"
