@@ -464,7 +464,7 @@ def register(registry, config) -> None:
 | `engine.before_llm` | skills mid append 目錄到 `system_messages` |
 | `engine.call_llm` | 合併 `system_messages` → API；寫回 req 同邏輯 |
 | Tools 通道 | `read_skill`／`read_file_in_skill`／`sh` |
-| Phase 6 `mention` | `handle_request`：展開 `@` / 預載 `#` tool results |
+| Phase 6 mentions | 引擎解析 `@{...}`；`file_cru`／`skills`／`web` 處理對應 `cmd` |
 | Phase 8 History | 快照含合併後 system 與 tool messages 即可 |
 
 ---

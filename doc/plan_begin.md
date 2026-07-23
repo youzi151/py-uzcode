@@ -55,8 +55,6 @@ src/uzcode/
 │   │   └── deploy-app/
 │   │       └── SKILL.md
 │   ├── mids/                # 使用者自訂 middleware（外部；同名覆寫內建）
-│   │   ├── mention/     # 展開 @ / 預載 #（Phase 6）
-│   │   ├── web/         # web_search / web_fetch（Phase 7）
 │   │   └── ...
 │   └── history/             # （可選）歷史 request 快照（Phase 8）
 ├── req.toml                 # 本次請求（可由 CLI 指定其他檔案）
@@ -64,11 +62,10 @@ src/uzcode/
 
 src/middlewares/             # 內建 middleware（隨套件）
 ├── logging/
-├── file_cru/                # read/list/grep + write/edit tools
-├── skills/                  # 載入 skills；目錄 → system_messages；read_* tools
+├── file_cru/                # CRU tools + @{file|folder[:!]:...} mentions
+├── skills/                  # skills + @{skill|skill!:...} mentions
 ├── shell/                   # sh tool
-├── mention/             # 展開 @file / @folder；預載 #file / #skill（Phase 6）
-├── web/                 # web_search / web_fetch；預載 #http(s)://（Phase 7）
+├── web/                     # web_* tools + @{search|fetch[:!]:...} mentions
 └── ...
 ```
 
@@ -202,53 +199,67 @@ enable = ["logging", "file_cru", "skills", "shell"]
 
 ### Phase 6 — Mention
 
-內建 mid `mention`（`src/middlewares/mention/`；使用者可放 `.uzcode/mids/` 覆寫）：
+引擎在 `handle_request` **解析** `@{cmd:text}` → `AgentState.mentions`；mid 以 **exact `cmd` match** 處理並設 `mention.replacement`／預載 tools；引擎再把 `replacement` 套到 `message.content`。TOML 只存 `content`（`raw` 僅 runtime）。
 
-- 在 `handle_request` 掃描並展開 `@file_path` / `@folder_path`：
-  - `@file` → 短索引（path / size / mtime），取代原字串
-  - `@folder` → 目錄 listing 字串長度 < 100 時展開 listing，否則只保留 folder path
-- 在 `handle_request` 掃描所有 user message 的 `#file_path` / `#skill_name`，事先呼叫 `read_file` / `read_skill`，以合成 assistant `tool_calls` + `role=tool` 寫入 messages；已有對應 tool result 則跳過。路徑不支援空白。
-- 對象不存在時提示 `Abort? (Y/n)`：Y/Enter 中止；`n` 繼續（允許之後再建立該路徑）
+| 語法 | Mid | 行為 |
+| --- | --- | --- |
+| `@{file:path}` / `@{folder:path}` | `file_cru` | 短索引 → `replacement` |
+| `@{file!:path}` / `@{folder!:path}` | `file_cru` | 短索引 + 預載 `read_file`／`list_dir` |
+| `@{skill:name}` | `skills` | `[skill: name]` or `[skill: name | desc: …]` (desc only if under 50 chars) |
+| `@{skill!:name}` | `skills` | same index + precall `read_skill` |
 
-**完成標準**：req 中含 `@file` / `@folder` / `#file_path` / `#skill_name` 時，送入 LLM 前已展開/讀入為實際內容。
+- Message：`content`（TOML／送 LLM）；runtime `raw` = 原始（含 `@{...}`），寫回前還原進 `content`
+- Mention 欄位：`{cmd, text, handled, raw, msg_index, replacement}`
+- 對象不存在時 `Continue? (y/N)`（空／`n` = 中止）
+
+**完成標準**：req 含上述 mention 時，送入 LLM 前 `content` 已展開或 tool result 已預載；寫回 TOML 的 `content` 仍為原始（含 `@{...}`）。
 
 ### Phase 7 — Web Search/Fetch
 
-內建 mid `web`（`src/middlewares/web/`；使用者可放 `.uzcode/mids/` 覆寫）：
+分層：
 
-| Tool          | 職責 |
-| ------------- | ---- |
-| `web_search`  | 關鍵字搜尋，回傳標題／URL／摘要列表 |
-| `web_fetch`   | 抓取單一 URL，抽出可讀正文（markdown／text），截斷後回傳 |
+| 層 | 職責 |
+| --- | ---- |
+| 內建 mid **`web`** | 註冊 `web_search`／`web_fetch` tools；`handle_request` 處理 `@{search\|fetch[:!]:...}` |
+| 引擎 | 只解析 `@{cmd:text}` 結構 |
+
+| Tool | 職責 |
+| --- | ---- |
+| `web_search` | 關鍵字搜尋，回傳標題／URL／摘要列表 |
+| `web_fetch` | 抓取單一 URL，抽出可讀正文（markdown／text），截斷後回傳 |
 
 **依賴選擇（建議）：**
 
 | 用途 | 套件 | 理由 |
-| ---- | ---- | ---- |
+| --- | ---- | ---- |
 | Search | **`ddgs`**（原 `duckduckgo-search`，已更名） | 免 API key；text search API 穩定；v9+ 為 metasearch（可選 backend）。**不要**再裝舊名 `duckduckgo-search` |
 | Fetch HTTP | **`httpx`** | 現代 HTTP client；timeout／redirect 好控 |
 | HTML → 正文 | **`trafilatura`** | 去導覽／廣告、可輸出 markdown；比裸 `html2text` 更適 LLM |
 
 **不採用（v1）：** Tavily／SerpAPI／Brave Search API（需 key／付費）；Playwright／瀏覽器渲染（過重）；自幹 DuckDuckGo HTML scrape。
 
-**Mention（與 Phase 6 對齊；由 `web` mid 的 `handle_request` 處理 URL，避免改壞 path mention）：**
+**Mention（`web` mid，exact `cmd`）：**
 
-- `@http(s)://...` → 短索引（url／status／content-type／title 若可得），取代原字串
-- `#http(s)://...` → 預先呼叫 `web_fetch`，合成 assistant `tool_calls` + `role=tool`；已有對應 result 則跳過
-- 失敗（非 2xx、timeout、抽文失敗）時比照 mention：`Continue? (y/N)`
-- **Search 不做 mention 語法**（查詢常含空白；與 Phase 6「無空白」契約衝突）→ 僅經 `web_search` tool
+```text
+@{search:python for loop}     → replacement 短索引（需 tool）
+@{search!:python for loop}    → 預載 web_search
+@{fetch:https://example.com}  → replacement 短索引
+@{fetch!:https://example.com} → 預載 web_fetch
+```
+
+`cmd` 含 `!` 與否由 mid 全字串比對決定；引擎不解釋 bang。tool 未註冊時 skip／stderr 提示。
 
 **Cfg 草圖：**
 
 ```toml
 [middleware]
-enable = ["logging", "file_cru", "skills", "shell", "mention", "web"]
+enable = ["logging", "file_cru", "skills", "shell", "web"]
 
 [tools.web_search]
 enable = true
-permission = "approve"   # 網路 I/O；預設 approve，可改 ask
+permission = "approve"
 # max_results = 5
-# backend = "auto"       # ddgs：auto | duckduckgo | bing | ...
+# backend = "auto"
 
 [tools.web_fetch]
 enable = true
@@ -257,9 +268,9 @@ permission = "approve"
 # timeout_sec = 30
 ```
 
-**本階段不做**：JS 渲染、付費搜尋 API、本機快取／index、搜尋 mention 語法、下載二進位／附件。
+**本階段不做**：JS 渲染、付費搜尋 API、本機快取／index、跳脫、下載二進位。
 
-**完成標準**：啟用 `web` mid 後，LLM 可呼叫 `web_search`／`web_fetch`；req 含 `#https://...` 時送入 LLM 前已預載 fetch result；結果寫回 messages，可 replay。
+**完成標準**：啟用 `web` 後 LLM 可呼叫 `web_*`；req 含 `@{search!:...}`／`@{fetch!:...}` 時預載 tool result；寫回可 replay。
 
 ### Phase 8 — History
 
@@ -321,7 +332,7 @@ enable = true
 permission = "approve"
 
 [middleware]
-enable = ["logging", "file_cru", "skills", "shell", "mention", "web"]
+enable = ["logging", "file_cru", "skills", "shell", "web"]
 
 [skills]
 # omit = all discovered; empty = inject none
@@ -397,8 +408,8 @@ Phase 0 骨架
             → Phase 3 Tools
                 → Phase 4 auto_loop
                     → Phase 5 Skills
-                        → Phase 6 Mention (`mention`)
-                            → Phase 7 Web (`web_search` / `web_fetch`)
+                        → Phase 6 Mention (engine parse + file_cru/skills)
+                            → Phase 7 Web (web tools + search/fetch mentions)
                                 → Phase 8 History
 Pending: CodingAgent API、README、內建 skill pack、智慧匹配 …
 ```

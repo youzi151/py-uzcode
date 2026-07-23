@@ -22,11 +22,10 @@
 │   │   │   └── SKILL.md
 │   │   └── ...
 │   ├── mids/                # 使用者自訂 middleware
-│   │   ├── mention      # 展開 `@file`/`@folder`；預載 `#file`/`#skill`
-│   │   │   └─ __init__.py
+│   │   ├── file_cru         # 含 @{file|folder[:!]:...} mention
+│   │   ├── skills           # 含 @{skill|skill!:...} mention
+│   │   ├── web              # web_* tools + @{search|fetch[:!]:...}
 │   │   ├── logging
-│   │   │   └─ __init__.py
-│   │   ├── web              # web_search / web_fetch；#http(s):// 預載
 │   │   │   └─ __init__.py
 │   │   └── ...
 │   └── history/             # (可選) 歷史 request 快照

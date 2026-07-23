@@ -11,19 +11,42 @@ from typing import Any
 
 @dataclass
 class Message:
+    """In-memory message.
+
+    ``content`` is what goes to the LLM (may be mention-expanded).
+    ``raw`` is the original text. When they differ, both are kept and
+    written to TOML; when equal, only ``content`` is persisted.
+    """
+
     role: str
     content: str
+    raw: str = ""
     name: str | None = None
     tool_call_id: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Message:
-        known = {"role", "content", "name", "tool_call_id"}
+        known = {"role", "content", "raw", "name", "tool_call_id"}
         extra = {k: v for k, v in data.items() if k not in known}
+        content_val = data.get("content")
+        raw_val = data.get("raw")
+        if content_val is None and raw_val is None:
+            content = ""
+            raw = ""
+        elif content_val is None:
+            content = str(raw_val)
+            raw = content
+        elif raw_val is None:
+            content = str(content_val)
+            raw = content
+        else:
+            content = str(content_val)
+            raw = str(raw_val)
         return cls(
             role=data["role"],
-            content=data.get("content", ""),
+            content=content,
+            raw=raw,
             name=data.get("name"),
             tool_call_id=data.get("tool_call_id"),
             extra=extra,
@@ -69,14 +92,19 @@ class Request:
         nested arrays (e.g. ``tool_calls``) become ``[[messages.tool_calls]]``.
         Prefixing ``[[messages]]`` onto a per-message dump would emit top-level
         ``[[tool_calls]]`` and detach them on the next load.
+
+        Always persist ``content``. Also persist ``raw`` when it differs.
         """
 
         out = Path(path or self.path)
         chunks: list[str] = []
-        
+
         messages: list[dict[str, Any]] = []
         for msg in self.messages:
-            entry: dict[str, Any] = {"role": msg.role, "content": msg.content}
+            entry: dict[str, Any] = {"role": msg.role}
+            if msg.raw != msg.content:
+                entry["raw"] = msg.raw
+            entry["content"] = msg.content
             if msg.name is not None:
                 entry["name"] = msg.name
             if msg.tool_call_id is not None:

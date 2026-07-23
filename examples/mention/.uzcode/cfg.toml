@@ -51,7 +51,7 @@ permission = "ask"
 timeout_sec = 60
 
 [middleware]
-enable = ["logging", "file_cru", "task_summary", "skills", "shell", "mention"]
+enable = ["logging", "file_cru", "task_summary", "skills", "shell", "web"]
 
 # [skills]
 # omit enable = list all discovered + code-registered skills
@@ -63,7 +63,9 @@ auto_open = true
 task_summary_path = ".uzcode/summaries"
 
 [middleware.order.handle_request]
-mention = 10
+file_cru = 10
+skills = 20
+web = 30
 
 [middleware.order.before_llm]
 logging = 10

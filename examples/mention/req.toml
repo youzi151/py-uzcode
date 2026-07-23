@@ -4,4 +4,4 @@ content = "You are a coding agent. Be concise and helpful.\n\n<!-- uzcode:skills
 
 [[messages]]
 role = "user"
-content = "find the user name in @files , #files/my_name.txt , #demo-skill , then write a file into @./answer.txt"
+content = "find the user name in @{folder:files} , @{file!:files/my_name.txt} , @{skill!:demo-skill} , then write a file into @{file:./results/answer.txt}"

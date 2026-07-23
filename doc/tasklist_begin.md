@@ -95,28 +95,30 @@
 
 ## Phase 6 — Mention
 
-**完成標準**：掃描 req 內所有 user message 含 `@file_path` / `@folder_path ...等 mention` 時，在送入 LLM 前已預先讀取相關檔案路徑，展開取代message的mention原字串，或者針對 #file_path #skill_path 使用 read_file / read_skill讀取內容並預先填入 tool call result message。
+**完成標準**：引擎解析 `@{cmd:text}` → `mentions`；`file_cru`／`skills` 設 `replacement` 或預載 tools；展開後的 `content` 送 LLM；寫回 TOML 只含原始 `content`（`raw` 僅 runtime）。
 
-- [x] 內建 mid ：mention；在 `handle_request` 掃描並展開 `@file_path`（短索引）／`@folder_path`（listing < 100 字元則展開，否則僅 path）
-- [x] 內建 mid ：mention；在 `handle_request` 掃描所有 user `#file_path` / `#skill_name`，事先使用 `read_file` / `read_skill` 合成 tool result 寫入 messages；已有 result 則跳過
-- [x] 對象不存在時 `Continue? (y/N)`（`y` 繼續、`N` 中止）；路徑不含空白
+- [x] 引擎：`@{cmd:text}` 解析、`AgentState.mentions`、runtime `raw`/`content`、套用 `replacement`
+- [x] `file_cru`：`file`／`folder`／`file!`／`folder!`
+- [x] `skills`：`skill`／`skill!`
+- [x] 對象不存在時 `Continue? (y/N)`；刪除獨立 `mention` mid
 
 ---
 
 ## Phase 7 — Web Fetch/Search
 
-**完成標準**：啟用 `web` mid 後，可經 tool（與 URL mention）觸發 Web Search／Fetch；結果寫入 messages，可 replay。
+**完成標準**：`web` 提供 tools + mention handlers；`@{search!:...}`／`@{fetch!:...}` 預載；結果可 replay。
 
-依賴：`ddgs`（search；勿用舊名 `duckduckgo-search`）、`httpx` + `trafilatura`（fetch）。詳見 [plan_begin.md](./plan_begin.md) Phase 7。
+依賴：`ddgs`、`httpx` + `trafilatura`。詳見 [plan_begin.md](./plan_begin.md) Phase 7。
+
+Mention：`@{search|fetch[:!]:text}`（引擎解析；`web` mid exact `cmd`）。
 
 - [ ] `pyproject.toml`：加入 `ddgs`、`httpx`、`trafilatura`
-- [ ] 內建 mid `web`：註冊 `web_search`（ddgs text）、`web_fetch`（httpx + trafilatura → markdown／text，截斷）
-- [ ] 尊重 `cfg.toml`：`[tools.web_search]`／`[tools.web_fetch]` 的 `enable`、`permission`；可選 `max_results`／`max_chars`／`timeout_sec`
-- [ ] `handle_request`：`@http(s)://...` 短索引展開；`#http(s)://...` 預先 `web_fetch` 合成 tool result（已有則跳過）；失敗時 `Continue? (y/N)`
-- [ ] 範例：`examples/` 一組含 `#https://...` 或 `web_search` 的 req／cfg（middleware.enable 含 `"web"`）
-- [ ] 手動驗收：tool 搜尋／抓頁可跑通；`#https://...` 預載；`enable=false` 不上送 LLM
+- [x] 內建 mid **`web`**：`handle_request` 處理 search/fetch mentions（tools 未註冊則 skip）
+- [ ] 註冊 `web_search`／`web_fetch` tools；尊重 cfg `enable`／`permission`
+- [ ] 範例：`@{search!:...}`／`@{fetch!:...}` 的 req／cfg
+- [ ] 手動驗收：tool 搜尋／抓頁；precall／短索引；tool 未開時不炸
 
-**本階段不做**：搜尋 mention 語法、JS 渲染、付費搜尋 API、快取／index。
+**本階段不做**：JS 渲染、付費搜尋 API、快取／index、跳脫、下載二進位。
 
 ---
 

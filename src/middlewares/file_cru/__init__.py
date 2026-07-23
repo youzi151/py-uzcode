@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from . import handlers
+from .mentions import handle_file_mentions
 from .paths import resolve_under_work_dir
 
 _READ_PARAMS = {
@@ -154,4 +155,8 @@ def register(registry, config) -> None:
             print(f"[file_cru] preview for {name}:\n{preview}", file=sys.stderr)
         return ctx
 
+    def handle_request(ctx: dict[str, Any]) -> dict[str, Any]:
+        return handle_file_mentions(ctx, registry)
+
+    registry.on("handle_request", handle_request, order=10, name="file_cru")
     registry.on("before_tool", before_tool, order=50, name="file_cru")

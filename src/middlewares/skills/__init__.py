@@ -8,6 +8,7 @@ from typing import Any
 from uzcode.skills import discover
 
 from . import handlers
+from .mentions import handle_skill_mentions
 
 CATALOG_MARKER = "<!-- uzcode:skills-catalog -->"
 
@@ -109,4 +110,8 @@ def register(registry, config) -> None:
         state["system_messages"] = system_messages
         return ctx
 
+    def handle_request(ctx: dict[str, Any]) -> dict[str, Any]:
+        return handle_skill_mentions(ctx, registry)
+
+    registry.on("handle_request", handle_request, order=20, name="skills")
     registry.on("before_llm", before_llm, order=20, name="skills")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, TypedDict
@@ -14,6 +15,8 @@ from langgraph.graph import END, START, StateGraph
 from uzcode.data import Config, Message, Request
 from uzcode.middleware.base import HookRegistry
 from uzcode.tools.registry import tool_cfg, tool_enabled, tool_permission
+
+_MENTION_RE = re.compile(r"@\{([^}:]+):([^}]*)\}")
 
 
 def _ask_user_yn(tool_name: str, arguments: dict[str, Any]) -> bool:
@@ -37,6 +40,7 @@ class AgentState(TypedDict):
     messages: list[dict[str, Any]]
     system_messages: list[str]
     skills_enabled: list[str]
+    mentions: list[dict[str, Any]]
     iteration: int
     stop_loop: bool
     extra: dict[str, Any]
@@ -54,11 +58,23 @@ class ToolCtx(TypedDict):
     result: str | None
 
 
+def _copy_mentions(mentions: list[Any] | None) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for item in mentions or []:
+        if not isinstance(item, dict):
+            continue
+        entry = dict(item)
+        entry["handled"] = list(entry.get("handled") or [])
+        out.append(entry)
+    return out
+
+
 def _copy_state(state: dict[str, Any]) -> AgentState:
     return {
         "messages": list(state.get("messages") or []),
         "system_messages": list(state.get("system_messages") or []),
         "skills_enabled": list(state.get("skills_enabled") or []),
+        "mentions": _copy_mentions(state.get("mentions")),
         "iteration": int(state.get("iteration", 0)),
         "stop_loop": bool(state.get("stop_loop", False)),
         "extra": dict(state.get("extra") or {}),
@@ -91,20 +107,61 @@ def _state_update(ctx: dict[str, Any]) -> AgentState:
     system_messages = state.get("system_messages")
     if system_messages is not None and not isinstance(system_messages, list):
         raise TypeError("state.system_messages must be a list")
+    mentions = state.get("mentions")
+    if mentions is not None and not isinstance(mentions, list):
+        raise TypeError("state.mentions must be a list")
     return {
         "messages": list(state.get("messages") or []),
         "system_messages": [str(p) for p in (system_messages or [])],
         "skills_enabled": [str(n) for n in (skills_enabled or [])],
+        "mentions": _copy_mentions(mentions),
         "iteration": int(state.get("iteration", 0)),
         "stop_loop": bool(state.get("stop_loop", False)),
         "extra": dict(state.get("extra") or {}),
     }
 
 
+def _msg_text(msg: dict[str, Any], *, prefer: str = "raw") -> str:
+    """Read message text; prefer ``raw`` for peel/parse, ``content`` for LLM."""
+    if prefer == "content":
+        if msg.get("content") is not None:
+            return str(msg["content"])
+        if msg.get("raw") is not None:
+            return str(msg["raw"])
+        return ""
+    if msg.get("raw") is not None:
+        return str(msg["raw"])
+    if msg.get("content") is not None:
+        return str(msg["content"])
+    return ""
+
+
+def _ensure_raw_content(msg: dict[str, Any]) -> None:
+    """Ensure both raw and content exist; content defaults to raw."""
+    raw = msg.get("raw")
+    content = msg.get("content")
+    if raw is None and content is not None:
+        msg["raw"] = str(content)
+        raw = msg["raw"]
+    if raw is None:
+        msg["raw"] = ""
+        raw = ""
+    else:
+        msg["raw"] = str(raw)
+    if content is None:
+        msg["content"] = str(raw)
+    else:
+        msg["content"] = str(content)
+
+
 def _messages_to_dicts(messages: list[Message]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for msg in messages:
-        entry: dict[str, Any] = {"role": msg.role, "content": msg.content}
+        entry: dict[str, Any] = {
+            "role": msg.role,
+            "raw": msg.raw,
+            "content": msg.content,
+        }
         if msg.name is not None:
             entry["name"] = msg.name
         if msg.tool_call_id is not None:
@@ -144,6 +201,74 @@ def _seed_skills_enabled(config: Config, registry: HookRegistry) -> list[str]:
     return [n for n in registered if n in allow]
 
 
+def _parse_mentions(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Parse ``@{cmd:text}`` from user message ``raw`` into AgentState.mentions."""
+    mentions: list[dict[str, Any]] = []
+    for idx, msg in enumerate(messages):
+        _ensure_raw_content(msg)
+        if msg.get("role") != "user":
+            continue
+        text = _msg_text(msg, prefer="raw")
+        for match in _MENTION_RE.finditer(text):
+            cmd = match.group(1)
+            body = match.group(2)
+            mentions.append(
+                {
+                    "cmd": cmd,
+                    "text": body,
+                    "handled": [],
+                    "raw": match.group(0),
+                    "msg_index": idx,
+                    "start": match.start(),
+                    "replacement": None,
+                }
+            )
+    return mentions
+
+
+def _apply_mention_replacements(
+    messages: list[dict[str, Any]], mentions: list[dict[str, Any]]
+) -> None:
+    """Apply mid-provided ``replacement`` strings onto message ``content``."""
+    by_msg: dict[int, list[dict[str, Any]]] = {}
+    for mention in mentions:
+        replacement = mention.get("replacement")
+        if replacement is None:
+            continue
+        try:
+            msg_index = int(mention.get("msg_index", -1))
+        except (TypeError, ValueError):
+            continue
+        if msg_index < 0 or msg_index >= len(messages):
+            continue
+        by_msg.setdefault(msg_index, []).append(mention)
+
+    for msg_index, items in by_msg.items():
+        msg = messages[msg_index]
+        _ensure_raw_content(msg)
+        content = str(msg.get("content") or "")
+        # Reverse by start so earlier offsets stay valid.
+        ordered = sorted(
+            items,
+            key=lambda m: int(m.get("start", -1)),
+            reverse=True,
+        )
+        for mention in ordered:
+            raw_span = str(mention.get("raw") or "")
+            if not raw_span:
+                continue
+            repl = str(mention["replacement"])
+            start = mention.get("start")
+            if isinstance(start, int) and start >= 0:
+                end = start + len(raw_span)
+                if content[start:end] == raw_span:
+                    content = content[:start] + repl + content[end:]
+                    continue
+            # Fallback: replace first occurrence
+            content = content.replace(raw_span, repl, 1)
+        msg["content"] = content
+
+
 def _peel_system_messages(
     messages: list[dict[str, Any]],
     system_messages: list[str],
@@ -153,21 +278,78 @@ def _peel_system_messages(
     body: list[dict[str, Any]] = []
     for msg in messages:
         if msg.get("role") == "system":
-            content = msg.get("content")
-            if content is not None and str(content) != "":
-                parts.append(str(content))
+            text = _msg_text(msg, prefer="raw")
+            if text:
+                parts.append(text)
         else:
+            _ensure_raw_content(msg)
             body.append(msg)
     return body, parts
 
 
+def _api_message(msg: dict[str, Any]) -> dict[str, Any]:
+    """Project an in-memory message to OpenAI/LiteLLM shape (no ``raw``)."""
+    out: dict[str, Any] = {"role": msg.get("role", "")}
+    out["content"] = _msg_text(msg, prefer="content")
+    if msg.get("name") is not None:
+        out["name"] = msg["name"]
+    if msg.get("tool_call_id") is not None:
+        out["tool_call_id"] = msg["tool_call_id"]
+    if msg.get("tool_calls") is not None:
+        out["tool_calls"] = msg["tool_calls"]
+    return out
+
+
 def _llm_messages(state: dict[str, Any]) -> list[dict[str, Any]]:
-    """Merge system_messages into one system message for the API / write-back."""
-    body = [m for m in (state.get("messages") or []) if m.get("role") != "system"]
+    """Merge system_messages into one system message for the API."""
+    body = [
+        _api_message(m)
+        for m in (state.get("messages") or [])
+        if m.get("role") != "system"
+    ]
     parts = [str(p) for p in (state.get("system_messages") or []) if str(p).strip()]
     if not parts:
         return body
     return [{"role": "system", "content": "\n\n".join(parts)}, *body]
+
+
+def _persist_messages(state: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build Message.from_dict payloads for TOML.
+
+    Keep runtime ``content`` (may be mention-expanded) and ``raw`` (original).
+    ``Message.write`` emits ``raw`` only when it differs from ``content``.
+    """
+    parts = [str(p) for p in (state.get("system_messages") or []) if str(p).strip()]
+    out: list[dict[str, Any]] = []
+    if parts:
+        text = "\n\n".join(parts)
+        out.append({"role": "system", "content": text, "raw": text})
+    for msg in state.get("messages") or []:
+        if msg.get("role") == "system":
+            continue
+        _ensure_raw_content(msg)
+        entry: dict[str, Any] = {
+            "role": msg.get("role", ""),
+            "raw": str(msg.get("raw") or ""),
+            "content": str(msg.get("content") or ""),
+        }
+        if msg.get("name") is not None:
+            entry["name"] = msg["name"]
+        if msg.get("tool_call_id") is not None:
+            entry["tool_call_id"] = msg["tool_call_id"]
+        for key, value in msg.items():
+            if key in {"role", "raw", "content", "name", "tool_call_id"}:
+                continue
+            entry[key] = value
+        out.append(entry)
+    return out
+
+
+def _new_text_message(role: str, text: str, **extra: Any) -> dict[str, Any]:
+    """Create a message with raw == content."""
+    entry: dict[str, Any] = {"role": role, "raw": text, "content": text}
+    entry.update(extra)
+    return entry
 
 
 def _litellm_model(model: str) -> str:
@@ -262,7 +444,10 @@ def _build_graph(config: Config, registry: HookRegistry):
         working["messages"] = body
         working["system_messages"] = system_messages
         working["skills_enabled"] = _seed_skills_enabled(config, registry)
-        return _state_update(registry.run("handle_request", _hook_ctx(working, config)))
+        working["mentions"] = _parse_mentions(working["messages"])
+        updated = _state_update(registry.run("handle_request", _hook_ctx(working, config)))
+        _apply_mention_replacements(updated["messages"], updated["mentions"])
+        return updated
 
     def before_llm(state: AgentState) -> AgentState:
         return _state_update(registry.run("before_llm", _hook_ctx(state, config)))
@@ -294,7 +479,7 @@ def _build_graph(config: Config, registry: HookRegistry):
         response = litellm.completion(**kwargs)
         choice = response.choices[0].message
         content = getattr(choice, "content", None) or ""
-        assistant: dict[str, Any] = {"role": "assistant", "content": content}
+        assistant = _new_text_message("assistant", content)
 
         raw_calls = getattr(choice, "tool_calls", None)
         if raw_calls:
@@ -338,31 +523,31 @@ def _build_graph(config: Config, registry: HookRegistry):
                 arguments = _parse_arguments(fn.get("arguments"))
             except ValueError as exc:
                 messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": call_id,
-                        "content": f"Error: {exc}",
-                    }
+                    _new_text_message(
+                        "tool",
+                        f"Error: {exc}",
+                        tool_call_id=call_id,
+                    )
                 )
                 continue
 
             if not name or registry.tools.get(name) is None:
                 messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": call_id,
-                        "content": f"Error: unknown tool {name!r}",
-                    }
+                    _new_text_message(
+                        "tool",
+                        f"Error: unknown tool {name!r}",
+                        tool_call_id=call_id,
+                    )
                 )
                 continue
 
             if not tool_enabled(config, name):
                 messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": call_id,
-                        "content": f"Error: tool {name!r} is disabled in cfg.toml",
-                    }
+                    _new_text_message(
+                        "tool",
+                        f"Error: tool {name!r} is disabled in cfg.toml",
+                        tool_call_id=call_id,
+                    )
                 )
                 continue
 
@@ -412,11 +597,7 @@ def _build_graph(config: Config, registry: HookRegistry):
             working = _state_update(ctx)
             messages = list(working["messages"])
             messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": call_id,
-                    "content": result,
-                }
+                _new_text_message("tool", result, tool_call_id=call_id)
             )
             working["messages"] = messages
 
@@ -495,6 +676,7 @@ def run(
         "messages": messages,
         "system_messages": [],
         "skills_enabled": [],
+        "mentions": [],
         "iteration": 0,
         "stop_loop": False,
         "extra": {},
@@ -503,14 +685,15 @@ def run(
         result = graph.invoke(initial)
         ctx = reg.run("on_result", _hook_ctx(result, config))
         final = _state_update(ctx)
-        # Persist merged system + body so req.toml stays replay-friendly
-        messages = _llm_messages(final)
+        # Persist content (+ raw when it differs) and injected tool pairs
+        messages = _persist_messages(final)
     except Exception as exc:
         err_ctx = _hook_ctx(
             {
                 "messages": messages,
                 "system_messages": [],
                 "skills_enabled": [],
+                "mentions": [],
                 "iteration": 0,
                 "stop_loop": False,
                 "extra": {},
