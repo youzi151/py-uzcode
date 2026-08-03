@@ -1,4 +1,4 @@
-"""Discover and load middleware from internal + external roots."""
+"""Discover and load extensions from internal + external roots."""
 
 from __future__ import annotations
 
@@ -8,19 +8,19 @@ from pathlib import Path
 from typing import Any
 
 from uzcode.data import Config
-from uzcode.middleware.base import HookRegistry
+from uzcode.extension.base import HookRegistry
 
 
-def _internal_middlewares_dir() -> Path:
-    # src/uzcode/middleware/loader.py → parents[2] == src/
-    return Path(__file__).resolve().parents[2] / "middlewares"
+def _internal_extensions_dir() -> Path:
+    # src/uzcode/extension/loader.py → parents[2] == src/
+    return Path(__file__).resolve().parents[2] / "extensions"
 
 
-def _external_middlewares_dir(work_dir: Path) -> Path:
-    return work_dir / ".uzcode" / "mids"
+def _external_extensions_dir(work_dir: Path) -> Path:
+    return work_dir / ".uzcode" / "exts"
 
 
-def _resolve_mid_file(root: Path, name: str) -> Path | None:
+def _resolve_ext_file(root: Path, name: str) -> Path | None:
     package = root / name / "__init__.py"
     if package.is_file():
         return package
@@ -46,7 +46,7 @@ def _discover_names(*roots: Path) -> list[str]:
 
 
 def _parse_order_overrides(raw: Any) -> dict[str, dict[str, int]]:
-    """Parse config.middleware['order'] → {hook: {name: int}}."""
+    """Parse config.extension['order'] → {hook: {name: int}}."""
     if not isinstance(raw, dict):
         return {}
     result: dict[str, dict[str, int]] = {}
@@ -57,17 +57,17 @@ def _parse_order_overrides(raw: Any) -> dict[str, dict[str, int]]:
     return result
 
 
-def _import_mid(name: str, path: Path):
-    module_name = f"uzcode_mid_{name}"
+def _import_ext(name: str, path: Path):
+    module_name = f"uzcode_ext_{name}"
     spec = importlib.util.spec_from_file_location(
         module_name,
         path,
         submodule_search_locations=[str(path.parent)] if path.name == "__init__.py" else None,
     )
     if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load middleware {name!r} from {path}")
+        raise ImportError(f"Cannot load extension {name!r} from {path}")
     module = importlib.util.module_from_spec(spec)
-    # Allow package-relative imports inside the mid folder
+    # Allow package-relative imports inside the ext folder
     sys.modules[module_name] = module
     if path.name == "__init__.py":
         sys.modules[module_name].__path__ = [str(path.parent)]  # type: ignore[attr-defined]
@@ -75,26 +75,26 @@ def _import_mid(name: str, path: Path):
     return module
 
 
-def load_middleware(work_dir: Path | str, config: Config) -> HookRegistry:
-    """Load mids from src/middlewares and {work_dir}/.uzcode/mids, then register."""
+def load_extensions(work_dir: Path | str, config: Config) -> HookRegistry:
+    """Load exts from src/extensions and {work_dir}/.uzcode/exts, then register."""
     work_dir = Path(work_dir).resolve()
-    internal = _internal_middlewares_dir()
-    external = _external_middlewares_dir(work_dir)
+    internal = _internal_extensions_dir()
+    external = _external_extensions_dir(work_dir)
 
-    mw_cfg = config.middleware if isinstance(config.middleware, dict) else {}
-    order_overrides = _parse_order_overrides(mw_cfg.get("order"))
+    ext_cfg = config.extension if isinstance(config.extension, dict) else {}
+    order_overrides = _parse_order_overrides(ext_cfg.get("order"))
     registry = HookRegistry(order_overrides=order_overrides)
 
     discovered = _discover_names(internal, external)
-    enable = mw_cfg.get("enable")
+    enable = ext_cfg.get("enable")
     if enable is not None:
         if not isinstance(enable, list):
-            raise TypeError("middleware.enable must be a list of middleware names")
+            raise TypeError("extension.enable must be a list of extension names")
         enable_names = [str(n) for n in enable]
         missing = [n for n in enable_names if n not in discovered]
         if missing:
             raise FileNotFoundError(
-                "Middleware not found: "
+                "Extension not found: "
                 + ", ".join(missing)
                 + f" (searched {internal} and {external})"
             )
@@ -103,16 +103,16 @@ def load_middleware(work_dir: Path | str, config: Config) -> HookRegistry:
         names = discovered
 
     for name in names:
-        path = _resolve_mid_file(external, name) or _resolve_mid_file(internal, name)
+        path = _resolve_ext_file(external, name) or _resolve_ext_file(internal, name)
         if path is None:
             raise FileNotFoundError(
-                f"Middleware {name!r} not found under {external} or {internal}"
+                f"Extension {name!r} not found under {external} or {internal}"
             )
-        module = _import_mid(name, path)
+        module = _import_ext(name, path)
         register = getattr(module, "register", None)
         if register is None or not callable(register):
             raise AttributeError(
-                f"Middleware {name!r} ({path}) must define register(registry, config)"
+                f"Extension {name!r} ({path}) must define register(registry, config)"
             )
         register(registry, config)
 

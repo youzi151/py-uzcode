@@ -1,4 +1,4 @@
-# uzcode 實作計畫
+﻿# uzcode 實作計畫
 
 本文件依 [idea_begin.md](./idea_begin.md) 轉成可執行的實作路線圖。  
 **核心原則**：Keep it simple, give control to the user.
@@ -15,7 +15,7 @@
 | Stateless 第一 | 每次執行只依完整的 `req.toml`，無隱藏狀態                     |
 | 使用者主導        | 可任意修改歷史訊息、tool results、甚至先前 AI 回應              |
 | 極簡核心         | 引擎只負責必要流程                                      |
-| 高度可擴充        | diff preview、logging、權限、多模型轉換等皆由 middleware 實作 |
+| 高度可擴充        | diff preview、logging、權限、多模型轉換等皆由 extension 實作 |
 | 不汙染工作目錄      | 無自動 git、無未經確認的檔案變更                             |
 | Debug 友好     | 易於 replay、fork 不同 request 版本                   |
 
@@ -38,11 +38,11 @@ src/uzcode/
 ├── skills/              # SkillRegistry + discover
 ├── tools/
 │   ├── __init__.py
-│   └── registry.py      # 薄註冊表（實作由 middleware 提供）
-└── middleware/
+│   └── registry.py      # 薄註冊表（實作由 extension 提供）
+└── extension/
     ├── __init__.py
     ├── base.py          # hooks + registry.tool() / skill()
-    └── loader.py        # 從 .uzcode/mids/ 動態載入
+    └── loader.py        # 從 .uzcode/exts/ 動態載入
 ```
 
 ### 2.2 工作目錄（執行時）
@@ -54,13 +54,13 @@ src/uzcode/
 │   ├── skills/              # Skill 檔（使用者放置；僅 */SKILL.md）
 │   │   └── deploy-app/
 │   │       └── SKILL.md
-│   ├── mids/                # 使用者自訂 middleware（外部；同名覆寫內建）
+│   ├── exts/                # 使用者自訂 extension（外部；同名覆寫內建）
 │   │   └── ...
 │   └── history/             # （可選）歷史 request 快照（Phase 8）
 ├── req.toml                 # 本次請求（可由 CLI 指定其他檔案）
 └── ... (專案檔案)
 
-src/middlewares/             # 內建 middleware（隨套件）
+src/extensions/             # 內建 extension（隨套件）
 ├── logging/
 ├── file_cru/                # CRU tools + @{file|folder[:!]:...} mentions
 ├── skills/                  # skills + @{skill|skill!:...} mentions
@@ -87,15 +87,15 @@ src/middlewares/             # 內建 middleware（隨套件）
 執行流程：
 
 1. 載入 config + request
-2. Before LLM middleware（此階段可為 no-op）
+2. Before LLM extension（此階段可為 no-op）
 3. 呼叫 OpenAI Chat Completions API（固定此協定）
 4. 將 assistant 回應 append 進 messages
-5. After middleware
+5. After extension
 6. （可選）把結果寫回主要 `req.toml` 或指定輸出檔
 
 **完成標準**：單輪對話可跑通，結果可透明寫回 TOML。
 
-### Phase 2 — Middleware 系統
+### Phase 2 — Extension 系統
 
 可介入階段：
 
@@ -104,16 +104,16 @@ src/middlewares/             # 內建 middleware（隨套件）
 - 最終結果
 - 錯誤處理
 
-雙路徑發現：`src/middlewares/`（內建）與 `{work_dir}/.uzcode/mids/`（外部；同名外部優先）。  
-各 mid 的 `__init__.py` 以 `register(registry, config)` 自行 `registry.on(hook, fn, order=..., name=...)` 註冊；執行順序依每 hook 的 effective order，可被 `cfg.toml` 的 `[middleware.order.<hook>]` 覆寫。
+雙路徑發現：`src/extensions/`（內建）與 `{work_dir}/.uzcode/exts/`（外部；同名外部優先）。  
+各 ext 的 `__init__.py` 以 `register(registry, config)` 自行 `registry.on(hook, fn, order=..., name=...)` 註冊；執行順序依每 hook 的 effective order，可被 `cfg.toml` 的 `[extension.order.<hook>]` 覆寫。
 
 **範例用途**：token/cost logging、多模型 request 轉換、自訂權限檢查；寫檔 confirm / preview 於 Phase 3 與 tools 一併驗收。
 
-**完成標準**：不改核心即可從雙路徑載入並執行 middleware（至少繞 LLM）；before/after tool hooks 已定義，供 Phase 3 使用。
+**完成標準**：不改核心即可從雙路徑載入並執行 extension（至少繞 LLM）；before/after tool hooks 已定義，供 Phase 3 使用。
 
-### Phase 3 — Tools（以 middleware 提供）
+### Phase 3 — Tools（以 extension 提供）
 
-核心只保留薄 `ToolRegistry` + 一輪 tool 執行；**工具實作無特權**，由 middleware 註冊（內建 `file_cru`）。
+核心只保留薄 `ToolRegistry` + 一輪 tool 執行；**工具實作無特權**，由 extension 註冊（內建 `file_cru`）。
 
 `file_cru`（create / read / update）：
 
@@ -129,16 +129,16 @@ src/middlewares/             # 內建 middleware（隨套件）
 
 雙層設定：
 
-1. `middleware.enable` — 是否載入提供 tools 的 mid（如 `file_cru`）
+1. `extension.enable` — 是否載入提供 tools 的 ext（如 `file_cru`）
 2. `[tools.<name>]` — 每個要送給 LLM 的 tool：`enable`、`permission`（`ask`  `approve`  `custom`）、`preview_diff`、`retry`、`on_failure`
   （未在 cfg 定義 `permission` 時一律視為 `ask`；無依 tool 名稱硬編碼）  
   - `approve`：直接執行  
   - `ask`：引擎內建 `(Y/n)`  
-  - `custom`：引擎不提問；預設拒絕，由 `before_tool` middleware 清 `skip` 核准或留下拒絕結果
+  - `custom`：引擎不提問；預設拒絕，由 `before_tool` extension 清 `skip` 核准或留下拒絕結果
 
-每次 tool 執行走 `before_tool` →（若 `permission = "ask"` 則引擎 `(Y/n)`）→ execute → `after_tool`；`preview_diff` / `custom` UX 由 middleware 實作，handler 本身不做權限判斷。
+每次 tool 執行走 `before_tool` →（若 `permission = "ask"` 則引擎 `(Y/n)`）→ execute → `after_tool`；`preview_diff` / `custom` UX 由 extension 實作，handler 本身不做權限判斷。
 
-**完成標準**：LLM 可發出 tool call；引擎經 middleware 執行後把 tool result 寫回 messages；可依 cfg 關閉單一 tool 或對寫檔 `permission = "ask"` 攔截，無需改引擎。
+**完成標準**：LLM 可發出 tool call；引擎經 extension 執行後把 tool result 寫回 messages；可依 cfg 關閉單一 tool 或對寫檔 `permission = "ask"` 攔截，無需改引擎。
 
 ### Phase 4 — Loop 控制
 
@@ -147,7 +147,7 @@ src/middlewares/             # 內建 middleware（隨套件）
 - 停止條件依最後一輪 assistant 是否含 `tool_calls`
 - `auto_loop=false`：一輪 LLM + 至多一輪 tools（等同 Phase 3）
 - `stop_loop` in AgentState：用來標記結束 **agent loop**；可於 per-tool/`after_tools` 中設
-- 兩層：LangGraph 節點只傳 `AgentState`；middleware 呼叫用短期 `ctx`（`state`/`config`/`tool`/`error`），引擎只寫回 `ctx["state"]`
+- 兩層：LangGraph 節點只傳 `AgentState`；extension 呼叫用短期 `ctx`（`state`/`config`/`tool`/`error`），引擎只寫回 `ctx["state"]`
 
 **完成標準**：一次 CLI 呼叫可完成多輪 tool 迴圈，過程全程可從 `req.toml` 重播。
 
@@ -158,19 +158,19 @@ src/middlewares/             # 內建 middleware（隨套件）
 兩條來源匯入同一 runtime skill 表；目錄（name + description）經 `system_messages` 注入，全文／附屬檔按需經 tools 載入：
 
 1. **檔案**：`{work_dir}/.uzcode/skills/**/SKILL.md`（目錄名 = frontmatter `name`）
-2. **程式**：middleware `registry.skill(...)`，執行期加入，**不**寫入 skills 目錄
+2. **程式**：extension `registry.skill(...)`，執行期加入，**不**寫入 skills 目錄
 
 **引擎契約（系統級）：**
 
 
 | 欄位／節點                        | 職責                                                                                                             |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `handle_request`（一次）         | 引擎：req `system` → `system_messages`；依 `[skills].enable` 注入 `skills_enabled`；再跑 mid hooks（可改變 `skills_enabled`） |
-| `system_messages: list[str]` | mids 只 append；`call_llm` 合併成單一 `role=system` 再送 API；寫回 req 亦用合併結果                                              |
+| `handle_request`（一次）         | 引擎：req `system` → `system_messages`；依 `[skills].enable` 注入 `skills_enabled`；再跑 ext hooks（可改變 `skills_enabled`） |
+| `system_messages: list[str]` | exts 只 append；`call_llm` 合併成單一 `role=system` 再送 API；寫回 req 亦用合併結果                                              |
 | `skills_enabled: list[str]`  | 可見 skill 名稱；目錄與 `read_*` 皆以此為準                                                                                 |
 
 
-**執行腳本**：一般 `sh` tool（mid `shell`）；cwd 固定 `work_dir`；skill 本身不可執行。
+**執行腳本**：一般 `sh` tool（ext `shell`）；cwd 固定 `work_dir`；skill 本身不可執行。
 
 **分層：**
 
@@ -178,30 +178,30 @@ src/middlewares/             # 內建 middleware（隨套件）
 | 層               | 職責                                                                                                                                |
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | 核心（薄）           | `SkillRegistry`／`discover`；`registry.skill(...)`；注入 `skills_enabled`；合併 `system_messages`                                         |
-| 內建 mid `skills` | 載入檔案 skills；註冊 `read_skill`／`read_file_in_skill`；`before_llm` 將目錄 append 到 `system_messages`（標記 `<!-- uzcode:skills-catalog -->`） |
-| 內建 mid `shell`  | 註冊 `sh`                                                                                                                           |
-| 其他 mid          | `registry.skill(...)`；於 `handle_request` 改變 `skills_enabled`                                                                      |
+| 內建 ext `skills` | 載入檔案 skills；註冊 `read_skill`／`read_file_in_skill`；`before_llm` 將目錄 append 到 `system_messages`（標記 `<!-- uzcode:skills-catalog -->`） |
+| 內建 ext `shell`  | 註冊 `sh`                                                                                                                           |
+| 其他 ext          | `registry.skill(...)`；於 `handle_request` 改變 `skills_enabled`                                                                      |
 
 
 **Cfg 草圖：**
 
 ```toml
-[middleware]
+[extension]
 enable = ["logging", "file_cru", "skills", "shell"]
 
 [skills]
 # 省略 = 全部；enable = [] 全關；enable = ["demo-skill"] 白名單
 ```
 
-**本階段不做**：智慧匹配、skill 內嵌 tools、`src/skills/` pack、mid 寫檔、多根 Cursor／Claude 掃描。
+**本階段不做**：智慧匹配、skill 內嵌 tools、`src/skills/` pack、ext 寫檔、多根 Cursor／Claude 掃描。
 
 **完成標準**：見 [plan_feature_skill.md](./plan_feature_skill.md) §9。
 
 ### Phase 6 — Mention
 
-引擎在 `handle_request` **解析** `@{cmd:text}` → `AgentState.mentions`；mid 以 **exact `cmd` match** 處理並設 `mention.replacement`／預載 tools；引擎再把 `replacement` 套到 `message.content`。TOML 只存 `content`（`raw` 僅 runtime）。
+引擎在 `handle_request` **解析** `@{cmd:text}` → `AgentState.mentions`；ext 以 **exact `cmd` match** 處理並設 `mention.replacement`／預載 tools；引擎再把 `replacement` 套到 `message.content`。TOML 只存 `content`（`raw` 僅 runtime）。
 
-| 語法 | Mid | 行為 |
+| 語法 | ext | 行為 |
 | --- | --- | --- |
 | `@{file:path}` / `@{folder:path}` | `file_cru` | 短索引 → `replacement` |
 | `@{file!:path}` / `@{folder!:path}` | `file_cru` | 短索引 + 預載 `read_file`／`list_dir` |
@@ -220,7 +220,7 @@ enable = ["logging", "file_cru", "skills", "shell"]
 
 | 層 | 職責 |
 | --- | ---- |
-| 內建 mid **`web`** | 註冊 `web_search`／`web_fetch` tools；`handle_request` 處理 `@{search\|fetch[:!]:...}` |
+| 內建 ext **`web`** | 註冊 `web_search`／`web_fetch` tools；`handle_request` 處理 `@{search\|fetch[:!]:...}` |
 | 引擎 | 只解析 `@{cmd:text}` 結構 |
 
 | Tool | 職責 |
@@ -238,7 +238,7 @@ enable = ["logging", "file_cru", "skills", "shell"]
 
 **不採用（v1）：** Tavily／SerpAPI／Brave Search API（需 key／付費）；Playwright／瀏覽器渲染（過重）；自幹 DuckDuckGo HTML scrape。
 
-**Mention（`web` mid，exact `cmd`）：**
+**Mention（`web` ext，exact `cmd`）：**
 
 ```text
 @{search:python for loop}     → replacement 短索引（title + link；無 snippet／正文）
@@ -247,12 +247,12 @@ enable = ["logging", "file_cru", "skills", "shell"]
 @{fetch!:https://example.com} → 短索引 + 預載 web_fetch（正文）
 ```
 
-`cmd` 含 `!` 與否由 mid 全字串比對決定；引擎不解釋 bang。tool 未註冊時 skip／stderr 提示。
+`cmd` 含 `!` 與否由 ext 全字串比對決定；引擎不解釋 bang。tool 未註冊時 skip／stderr 提示。
 
 **Cfg 草圖：**
 
 ```toml
-[middleware]
+[extension]
 enable = ["logging", "file_cru", "skills", "shell", "web"]
 
 [tools.web_search]
@@ -274,14 +274,14 @@ permission = "approve"
 
 ### Phase 8 — History
 
-執行成功後可選快照 request 到 `.uzcode/history/`（時間戳或 hash 複本）。掛點：`on_result` mid，或 `engine.run` 成功後的薄 helper。須經 cfg 開啟。
+執行成功後可選快照 request 到 `.uzcode/history/`（時間戳或 hash 複本）。掛點：`on_result` ext，或 `engine.run` 成功後的薄 helper。須經 cfg 開啟。
 
 **完成標準**：開啟後每次成功執行在 `.uzcode/history/` 留下可 replay 的 request 複本。
 
 ### Pending（未排期）
 
 - 公開 API 打磨：`CodingAgent(work_dir).run(request_path=...)`
-- README（安裝、CLI、cfg / req 契約、自訂 middleware）
+- README（安裝、CLI、cfg / req 契約、自訂 extension）
 
 ---
 
@@ -331,21 +331,21 @@ permission = "approve"
 enable = true
 permission = "approve"
 
-[middleware]
+[extension]
 enable = ["logging", "file_cru", "skills", "shell", "web"]
 
 [skills]
 # omit = all discovered; empty = inject none
 # enable = ["my_skill"]
 
-[middleware.order.before_llm]
+[extension.order.before_llm]
 logging = 10
 skills = 20
 
-[middleware.order.after_llm]
+[extension.order.after_llm]
 logging = 100
 
-[middleware.order.before_tool]
+[extension.order.before_tool]
 file_cru = 50
 ```
 
@@ -375,7 +375,7 @@ uzcode --req request_v1.toml          # 可指定輸出路徑以利版本控制
 ## 5. 錯誤與安全（v1）
 
 - Tool 失敗依 config 的 `retry` / `on_failure`
-- Preview / Confirm 由 middleware 實作，核心不硬編碼互動 UX
+- Preview / Confirm 由 extension 實作，核心不硬編碼互動 UX
 - 核心不執行危險操作，除非設定明確允許
 - 不自動 git commit / push
 
@@ -384,7 +384,7 @@ uzcode --req request_v1.toml          # 可指定輸出路徑以利版本控制
 ## 6. v1 明確不做
 
 - RAG / codebase indexing
-- 核心內建多模型（留給 middleware）
+- 核心內建多模型（留給 extension）
 - 自動 git 操作
 - 完整 CLI REPL（列為未來擴充）
 
@@ -394,7 +394,7 @@ uzcode --req request_v1.toml          # 可指定輸出路徑以利版本控制
 
 1. 一次 CLI 執行：載入 `req.toml` → LLM + tools 迴圈 → 結果透明寫回（或指定輸出檔）
 2. 使用者可手改 `req.toml` 後直接 replay / fork
-3. Middleware 可攔截寫檔類 tool，實作 confirm / preview，無需改引擎
+3. extension 可攔截寫檔類 tool，實作 confirm / preview，無需改引擎
 4. 工作目錄無未確認變更、無自動 git 副作用
 
 ---
@@ -404,7 +404,7 @@ uzcode --req request_v1.toml          # 可指定輸出路徑以利版本控制
 ```text
 Phase 0 骨架
     → Phase 1 單輪 LLM
-        → Phase 2 Middleware
+        → Phase 2 extension
             → Phase 3 Tools
                 → Phase 4 auto_loop
                     → Phase 5 Skills

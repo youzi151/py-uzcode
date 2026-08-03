@@ -9,7 +9,7 @@ from pathlib import Path
 
 from uzcode.data import Config, Request
 from uzcode.engine import run as run_engine
-from uzcode.middleware import load_middleware
+from uzcode.extension import load_extensions
 
 
 def _format_config(config: Config) -> str:
@@ -33,10 +33,10 @@ def _format_config(config: Config) -> str:
             for key, value in opts.items():
                 lines.append(f"  {key}: {value}")
 
-    if config.middleware:
+    if config.extension:
         lines.append("")
-        lines.append("[middleware]")
-        for key, value in config.middleware.items():
+        lines.append("[extension]")
+        for key, value in config.extension.items():
             if isinstance(value, list):
                 lines.append(f"  {key}: {json.dumps(value)}")
             else:
@@ -96,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     print()
 
     try:
-        registry = load_middleware(work_dir, config)
+        registry = load_extensions(work_dir, config)
     except (FileNotFoundError, AttributeError, ImportError, TypeError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1

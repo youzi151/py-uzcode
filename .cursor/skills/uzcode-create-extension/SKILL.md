@@ -1,23 +1,23 @@
----
-name: uzcode-create-middleware
-description: Author uzcode middleware packages that register hooks and tools. Use when creating or editing middleware under src/middlewares/ or .uzcode/mids/, or when the user asks how to add hooks, tools, preview/confirm, or mid registration.
+﻿---
+name: uzcode-create-extension
+description: Author uzcode extension packages that register hooks and tools. Use when creating or editing extensions under src/extensions/ or .uzcode/exts/, or when the user asks how to add hooks, tools, preview/confirm, or ext registration.
 disable-model-invocation: true
 ---
 
-# Create uzcode Middleware
+# Create uzcode Extension
 
 ## Concept
 
-uzcode keeps a thin engine. All advanced behavior (logging, tools, preview/confirm, custom permission, request transforms) lives in **middleware** (mids).
+uzcode keeps a thin engine. All advanced behavior (logging, tools, preview/confirm, custom permission, request transforms) lives in **extensions** (exts).
 
 Dual discovery (external wins on name clash):
 
 | Root | Path |
 |------|------|
-| Built-in | `src/middlewares/<name>/` |
-| User | `{work_dir}/.uzcode/mids/<name>/` |
+| Built-in | `src/extensions/<name>/` |
+| User | `{work_dir}/.uzcode/exts/<name>/` |
 
-Each mid is a package (`<name>/__init__.py`) or module (`<name>.py`) that exports:
+Each ext is a package (`<name>/__init__.py`) or module (`<name>.py`) that exports:
 
 ```python
 def register(registry, config) -> None: ...
@@ -26,14 +26,14 @@ def register(registry, config) -> None: ...
 Enable via `cfg.toml`:
 
 ```toml
-[middleware]
-enable = ["logging", "file_cru", "my_mid"]
+[extension]
+enable = ["logging", "file_cru", "my_ext"]
 
-[middleware.order.before_llm]
+[extension.order.before_llm]
 logging = 10
 ```
 
-If `middleware.enable` is omitted, all discovered mids load. Order per hook uses registration `order`, overridable by `[middleware.order.<hook>]`.
+If `extension.enable` is omitted, all discovered exts load. Order per hook uses registration `order`, overridable by `[extension.order.<hook>]`.
 
 ## Engine flow
 
@@ -53,10 +53,10 @@ Exception path → on_error (best-effort) then re-raise
 | Layer | What | Lifetime |
 |-------|------|----------|
 | **AgentState** | LangGraph node I/O: `messages`, `iteration`, `stop_loop`, `extra` | Persists across nodes / turns |
-| **HookContext (`ctx`)** | Built **per middleware call** (and tool handlers) | Dies when the hook returns |
+| **HookContext (`ctx`)** | Built **per extension call** (and tool handlers) | Dies when the hook returns |
 
 ```text
-node --AgentState--> engine --ctx--> middleware --ctx--> engine --AgentState--> next node
+node --AgentState--> engine --ctx--> extension --ctx--> engine --AgentState--> next node
 ```
 
 Engine writes back **only** `ctx["state"]`. `config` / `tool` / `error` never enter the graph.
@@ -76,10 +76,10 @@ Engine writes back **only** `ctx["state"]`. `config` / `tool` / `error` never en
 Register with:
 
 ```python
-registry.on("before_llm", fn, order=100, name="my_mid")
+registry.on("before_llm", fn, order=100, name="my_ext")
 ```
 
-- `name` must be unique **per hook** (usually the mid package name).
+- `name` must be unique **per hook** (usually the ext package name).
 - `fn(ctx) -> ctx` — always return the context dict.
 - Effective order: `cfg` override if present, else `order`, then `name` as tiebreak.
 
@@ -91,7 +91,7 @@ ctx = {
         "messages": [...],
         "iteration": int,
         "stop_loop": bool,     # end agent loop after this turn (batch still finishes)
-        "extra": {},           # mid-owned scratch (not Message.extra)
+        "extra": {},           # ext-owned scratch (not Message.extra)
     },
     "config": Config,
     "tool": ToolCtx | None,    # set for before_tool / after_tool / handlers
@@ -118,13 +118,13 @@ ctx["tool"]["skip"] = True          # only when tool is not None
 
 Permission behavior (engine):
 
-- **`approve`**: run unless a mid sets `tool["skip"]`
+- **`approve`**: run unless a ext sets `tool["skip"]`
 - **`ask`**: after `before_tool`, engine prompts `(Y/n)` if not already skipped
-- **`custom`**: engine starts with `skip=True` and a deny `result`; mid must clear `skip` (and clear/set `result`) to approve — no Y/n
+- **`custom`**: engine starts with `skip=True` and a deny `result`; ext must clear `skip` (and clear/set `result`) to approve — no Y/n
 
 ## Registering tools
 
-Tools have no privilege in the core — mids register them:
+Tools have no privilege in the core — exts register them:
 
 ```python
 registry.tool(
@@ -139,20 +139,20 @@ registry.tool(
 )
 ```
 
-Per-tool cfg (`[tools.<name>]`): `enable`, `permission`, `preview_diff`, `retry`, `on_failure`. Default permission when omitted: `ask`. Handlers must not decide permission — use cfg + `before_tool`. To end the agent loop after this turn: `ctx["state"]["stop_loop"]=True`. Cross-turn mid data: `ctx["state"]["extra"]`.
+Per-tool cfg (`[tools.<name>]`): `enable`, `permission`, `preview_diff`, `retry`, `on_failure`. Default permission when omitted: `ask`. Handlers must not decide permission — use cfg + `before_tool`. To end the agent loop after this turn: `ctx["state"]["stop_loop"]=True`. Cross-turn ext data: `ctx["state"]["extra"]`.
 
 ## Authoring checklist
 
-1. Create `{root}/my_mid/__init__.py` (built-in under `src/middlewares/`, or user under `.uzcode/mids/`).
+1. Create `{root}/my_ext/__init__.py` (built-in under `src/extensions/`, or user under `.uzcode/exts/`).
 2. Implement `register(registry, config)`.
 3. Call `registry.on(...)` / `registry.tool(...)` with unique hook `name=`.
-4. Add `"my_mid"` to `middleware.enable` in `.uzcode/cfg.toml`.
-5. Optionally set `[middleware.order.<hook>]` and `[tools.<name>]`.
+4. Add `"my_ext"` to `extension.enable` in `.uzcode/cfg.toml`.
+5. Optionally set `[extension.order.<hook>]` and `[tools.<name>]`.
 
 ## Minimal example
 
 ```python
-"""User mid: log after_tools to stderr."""
+"""User ext: log after_tools to stderr."""
 
 from __future__ import annotations
 
@@ -165,19 +165,19 @@ def register(registry, config) -> None:
         state = ctx["state"]
         n = len(state.get("messages") or [])
         print(
-            f"[my_mid] after_tools iteration={state.get('iteration')} messages={n}",
+            f"[my_ext] after_tools iteration={state.get('iteration')} messages={n}",
             file=sys.stderr,
         )
         return ctx
 
-    registry.on("after_tools", after_tools, order=100, name="my_mid")
+    registry.on("after_tools", after_tools, order=100, name="my_ext")
 ```
 
 ## Repo examples (read these)
 
-- Hooks only: [`src/middlewares/logging/__init__.py`](../../../src/middlewares/logging/__init__.py) — `before_llm` / `after_llm`
-- Tools + preview: [`src/middlewares/file_cru/__init__.py`](../../../src/middlewares/file_cru/__init__.py) — `registry.tool` + `before_tool`
-- Contracts: [`src/uzcode/middleware/base.py`](../../../src/uzcode/middleware/base.py), [`src/uzcode/middleware/loader.py`](../../../src/uzcode/middleware/loader.py), [`src/uzcode/engine.py`](../../../src/uzcode/engine.py)
+- Hooks only: [`src/extensions/logging/__init__.py`](../../../src/extensions/logging/__init__.py) — `before_llm` / `after_llm`
+- Tools + preview: [`src/extensions/file_cru/__init__.py`](../../../src/extensions/file_cru/__init__.py) — `registry.tool` + `before_tool`
+- Contracts: [`src/uzcode/extension/base.py`](../../../src/uzcode/extension/base.py), [`src/uzcode/extension/loader.py`](../../../src/uzcode/extension/loader.py), [`src/uzcode/engine.py`](../../../src/uzcode/engine.py)
 
 ## Anti-patterns
 
@@ -186,7 +186,7 @@ def register(registry, config) -> None:
 - Permission / confirm logic inside tool handlers (use cfg + `before_tool`)
 - Expecting engine Y/n when `permission = "custom"`
 - Mutating `ctx` without returning it
-- Hardcoding Windows-style paths in mid docs or imports
-- Writing mid-private data outside `ctx["state"]["extra"]`
+- Hardcoding Windows-style paths in ext docs or imports
+- Writing ext-private data outside `ctx["state"]["extra"]`
 - Treating flat keys (`messages`, `tool_name`, …) as ctx — use `state` / `tool`
 - Expecting `config` / `tool` / `error` to persist in LangGraph (only `state` does)

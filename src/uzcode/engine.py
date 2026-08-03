@@ -13,7 +13,7 @@ import litellm
 from langgraph.graph import END, START, StateGraph
 
 from uzcode.data import Config, Message, Request
-from uzcode.middleware.base import HookRegistry
+from uzcode.extension.base import HookRegistry
 from uzcode.tools.registry import tool_cfg, tool_enabled, tool_permission
 
 _MENTION_RE = re.compile(r"@\{([^}:]+):([^}]*)\}")
@@ -35,7 +35,7 @@ def _ask_user_yn(tool_name: str, arguments: dict[str, Any]) -> bool:
 
 
 class AgentState(TypedDict):
-    """LangGraph node I/O. Mid scratch lives in ``extra``."""
+    """LangGraph node I/O. Ext scratch lives in ``extra``."""
 
     messages: list[dict[str, Any]]
     system_messages: list[str]
@@ -88,7 +88,7 @@ def _hook_ctx(
     tool: ToolCtx | None = None,
     error: BaseException | None = None,
 ) -> dict[str, Any]:
-    """Short-lived middleware ctx. Only ``ctx["state"]`` is written back to LangGraph."""
+    """Short-lived extension ctx. Only ``ctx["state"]`` is written back to LangGraph."""
     return {
         "state": _copy_state(state),
         "config": config,
@@ -229,7 +229,7 @@ def _parse_mentions(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _apply_mention_replacements(
     messages: list[dict[str, Any]], mentions: list[dict[str, Any]]
 ) -> None:
-    """Apply mid-provided ``replacement`` strings onto message ``content``."""
+    """Apply ext-provided ``replacement`` strings onto message ``content``."""
     by_msg: dict[int, list[dict[str, Any]]] = {}
     for mention in mentions:
         replacement = mention.get("replacement")
@@ -428,7 +428,7 @@ def _execute_with_retry(
             if on_failure == "continue":
                 return last_error
             if on_failure == "ask":
-                # Defer interactive retry UX to middleware; surface error for now.
+                # Defer interactive retry UX to extension; surface error for now.
                 return last_error
             # abort: keep retrying until attempts exhausted, then return error
             continue
@@ -497,7 +497,7 @@ def _build_graph(config: Config, registry: HookRegistry):
         """Execute each tool_call; finish the full batch even if stop_loop is set.
 
         ``stop_loop`` ends the *agent loop* after this turn (via routing), not
-        remaining tool_calls in this batch. Mid mutates ``ctx["state"]``;
+        remaining tool_calls in this batch. Ext mutates ``ctx["state"]``;
         per-call fields live on ``ctx["tool"]``.
         """
         working = _copy_state(state)
@@ -562,7 +562,7 @@ def _build_graph(config: Config, registry: HookRegistry):
                 "work_dir": str(config.work_dir),
                 "skip": custom,
                 "result": (
-                    f"Error: tool {name!r} requires custom middleware approval"
+                    f"Error: tool {name!r} requires custom extension approval"
                     if custom
                     else None
                 ),
@@ -606,7 +606,7 @@ def _build_graph(config: Config, registry: HookRegistry):
     def after_tools(state: AgentState) -> AgentState:
         """Batch-level hook after all tool_calls in this turn.
 
-        Middleware may set ``state["stop_loop"]=True`` to end the agent loop
+        Extensions may set ``state["stop_loop"]=True`` to end the agent loop
         after this turn (not to skip remaining tool_calls).
         """
         return _state_update(registry.run("after_tools", _hook_ctx(state, config)))
@@ -618,7 +618,7 @@ def _build_graph(config: Config, registry: HookRegistry):
         ``stop_loop`` forces end of the agent loop (set in run_tools or after_tools).
         """
         if state.get("stop_loop"):
-            print("Stopping: stop_loop set by middleware/tool", file=sys.stderr)
+            print("Stopping: stop_loop set by extension/tool", file=sys.stderr)
             return "end"
 
         if not config.loop.auto_loop:

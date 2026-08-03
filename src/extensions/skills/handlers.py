@@ -1,4 +1,4 @@
-"""Skills middleware handlers — read_skill / read_file_in_skill."""
+"""Skills extension handlers — read_skill / read_file_in_skill."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def _work_dir(ctx: dict[str, Any]) -> Path:
 
 
 def _enabled_set(ctx: dict[str, Any]) -> set[str]:
-    """Enabled skill names from state.skills_enabled (engine-seeded / mid-mutated)."""
+    """Enabled skill names from state.skills_enabled (engine-seeded / ext-mutated)."""
     state = ctx.get("state") or {}
     enabled = state.get("skills_enabled")
     if not isinstance(enabled, list):

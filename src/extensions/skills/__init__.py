@@ -1,4 +1,4 @@
-"""Built-in skills middleware — catalog via system_messages + read tools."""
+"""Built-in skills extension — catalog via system_messages + read tools."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Tool registry (handlers come from middleware)."""
+"""Tool registry (handlers come from extensions)."""
 
 from uzcode.tools.registry import (
     ToolHandler,

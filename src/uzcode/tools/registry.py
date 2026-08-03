@@ -1,4 +1,4 @@
-"""Thin tool registry — mids register handlers; core only looks up / executes."""
+"""Thin tool registry — exts register handlers; core only looks up / executes."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ def tool_permission(config: Config, name: str) -> str:
 
 
 class ToolRegistry:
-    """Register tools offered by middleware; filter by cfg for the LLM."""
+    """Register tools offered by extensions; filter by cfg for the LLM."""
 
     def __init__(self) -> None:
         self._tools: dict[str, ToolSpec] = {}

@@ -30,7 +30,7 @@ class Config:
     llm: LLMConfig = field(default_factory=LLMConfig)
     loop: LoopConfig = field(default_factory=LoopConfig)
     tools: dict[str, dict[str, Any]] = field(default_factory=dict)
-    middleware: dict[str, Any] = field(default_factory=dict)
+    extension: dict[str, Any] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -63,6 +63,6 @@ class Config:
                 max_iterations=loop_raw.get("max_iterations", LoopConfig.max_iterations),
             ),
             tools=raw.get("tools", {}),
-            middleware=raw.get("middleware", {}),
+            extension=raw.get("extension", {}),
             raw=raw,
         )

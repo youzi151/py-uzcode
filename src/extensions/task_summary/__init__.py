@@ -1,4 +1,4 @@
-"""Built-in task_summary middleware — summarize_task tool + on_result open."""
+"""Built-in task_summary extension — summarize_task tool + on_result open."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ _TOOL_DESCRIPTION = (
 
 
 def _auto_open_enabled(config: Any) -> bool:
-    cfg = handlers.mid_cfg(config)
+    cfg = handlers.ext_cfg(config)
     if "auto_open" not in cfg:
         return True
     return bool(cfg.get("auto_open"))

@@ -13,7 +13,7 @@ class Skill:
     body: str
     # File skill: path relative to work_dir; code skill: None
     root_relpath: str | None
-    source: str  # "file:<path>" | "code:<mid_name>"
+    source: str  # "file:<path>" | "code:<ext_name>"
     extra: dict[str, object] | None = None
 
 

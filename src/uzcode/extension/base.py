@@ -1,4 +1,4 @@
-"""Middleware hook registry (no Protocol — callables only)."""
+"""Extension hook registry (no Protocol — callables only)."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ class _Registration:
 
 
 class HookRegistry:
-    """Collects hook callables and tools registered by middleware."""
+    """Collects hook callables and tools registered by extensions."""
 
     def __init__(
         self,

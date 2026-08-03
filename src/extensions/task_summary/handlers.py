@@ -16,11 +16,11 @@ _RESULT_PREVIEW = 120
 _TOOL_NAME = "summarize_task"
 
 
-def mid_cfg(config: Any) -> dict[str, Any]:
-    middleware = getattr(config, "middleware", None) or {}
-    if not isinstance(middleware, dict):
+def ext_cfg(config: Any) -> dict[str, Any]:
+    extension = getattr(config, "extension", None) or {}
+    if not isinstance(extension, dict):
         return {}
-    raw = middleware.get("task_summary")
+    raw = extension.get("task_summary")
     return raw if isinstance(raw, dict) else {}
 
 
@@ -167,7 +167,7 @@ def summarize_task(args: dict[str, Any], ctx: dict[str, Any]) -> str:
     )
 
     work_dir = _work_dir(ctx)
-    cfg = mid_cfg(ctx.get("config"))
+    cfg = ext_cfg(ctx.get("config"))
     out_rel = str(cfg.get("task_summary_path") or _DEFAULT_OUT_DIR).strip() or _DEFAULT_OUT_DIR
     out_dir = _resolve_under_work_dir(work_dir, out_rel)
     out_dir.mkdir(parents=True, exist_ok=True)

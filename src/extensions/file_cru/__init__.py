@@ -1,4 +1,4 @@
-"""Built-in file_cru middleware — registers CRU tools + ask/approve before_tool."""
+"""Built-in file_cru extension — registers CRU tools + ask/approve before_tool."""
 
 from __future__ import annotations
 

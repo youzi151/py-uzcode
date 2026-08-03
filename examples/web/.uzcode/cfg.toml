@@ -20,14 +20,14 @@ permission = "approve"
 max_chars = 32768
 timeout_sec = 30
 
-[middleware]
+[extension]
 enable = ["logging", "web"]
 
-[middleware.order.handle_request]
+[extension.order.handle_request]
 web = 30
 
-[middleware.order.before_llm]
+[extension.order.before_llm]
 logging = 10
 
-[middleware.order.after_llm]
+[extension.order.after_llm]
 logging = 100

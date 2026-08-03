@@ -1,4 +1,4 @@
-"""Shell middleware — register the general-purpose ``sh`` tool."""
+"""Shell extension — register the general-purpose ``sh`` tool."""
 
 from __future__ import annotations
 

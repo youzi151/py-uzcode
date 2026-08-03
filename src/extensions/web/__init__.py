@@ -1,4 +1,4 @@
-"""Built-in web middleware — web_search / web_fetch tools + mentions."""
+"""Built-in web extension — web_search / web_fetch tools + mentions."""
 
 from __future__ import annotations
 

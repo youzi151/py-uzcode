@@ -1,4 +1,4 @@
-"""Built-in logging middleware — logs before/after LLM to stderr."""
+"""Built-in logging extension — logs before/after LLM to stderr."""
 
 from __future__ import annotations
 
