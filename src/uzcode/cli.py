@@ -42,6 +42,16 @@ def _format_config(config: Config) -> str:
             else:
                 lines.append(f"  {key}: {value}")
 
+    if config.exts:
+        for name, opts in config.exts.items():
+            lines.append("")
+            lines.append(f"[exts.{name}]")
+            if isinstance(opts, dict):
+                for key, value in opts.items():
+                    lines.append(f"  {key}: {value}")
+            else:
+                lines.append(f"  {opts}")
+
     return "\n".join(lines)
 
 

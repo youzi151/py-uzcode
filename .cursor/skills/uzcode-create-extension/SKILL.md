@@ -31,20 +31,24 @@ enable = ["logging", "file_cru", "my_ext"]
 
 [extension.order.before_llm]
 logging = 10
+
+# Per-extension options (not system keys):
+# [exts.my_ext]
+# option = "value"
 ```
 
-If `extension.enable` is omitted, all discovered exts load. Order per hook uses registration `order`, overridable by `[extension.order.<hook>]`.
+`[extension]` is uzcode’s extension feature (`enable`, `order`). Per-ext options live under `[exts.<name>]` (read via `config.exts.get("my_ext")`). If `extension.enable` is omitted, all discovered exts load. Order per hook uses registration `order`, overridable by `[extension.order.<hook>]`.
 
 ## Engine flow
 
 ```text
 START → before_llm → call_llm → after_llm → run_tools → after_tools
                                                               │
-                    ┌──── auto_loop + last assistant has tool_calls ────┘
-                    ↓
-                 before_llm …
-                    │
-                    └─ else / stop_loop / max_iterations → on_result → write req.toml
+          ┌──── auto_loop + last assistant has tool_calls ────┘
+          ↓
+       before_llm …
+          │
+          └─ else / stop_loop / max_iterations → on_result → write req.toml
 Exception path → on_error (best-effort) then re-raise
 ```
 
@@ -147,7 +151,7 @@ Per-tool cfg (`[tools.<name>]`): `enable`, `permission`, `preview_diff`, `retry`
 2. Implement `register(registry, config)`.
 3. Call `registry.on(...)` / `registry.tool(...)` with unique hook `name=`.
 4. Add `"my_ext"` to `extension.enable` in `.uzcode/cfg.toml`.
-5. Optionally set `[extension.order.<hook>]` and `[tools.<name>]`.
+5. Optionally set `[extension.order.<hook>]`, `[exts.my_ext]`, and `[tools.<name>]`.
 
 ## Minimal example
 

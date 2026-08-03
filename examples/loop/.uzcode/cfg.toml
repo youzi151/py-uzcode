@@ -40,7 +40,7 @@ permission = "approve"
 [extension]
 enable = ["logging", "file_cru", "task_summary"]
 
-[extension.task_summary]
+[exts.task_summary]
 auto_open = true
 task_summary_path = ".uzcode/summaries"
 

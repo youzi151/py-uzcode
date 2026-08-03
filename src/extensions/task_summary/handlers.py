@@ -17,10 +17,11 @@ _TOOL_NAME = "summarize_task"
 
 
 def ext_cfg(config: Any) -> dict[str, Any]:
-    extension = getattr(config, "extension", None) or {}
-    if not isinstance(extension, dict):
+    """Read ``[exts.task_summary]`` from cfg."""
+    ext = getattr(config, "exts", None) or {}
+    if not isinstance(ext, dict):
         return {}
-    raw = extension.get("task_summary")
+    raw = ext.get("task_summary")
     return raw if isinstance(raw, dict) else {}
 
 

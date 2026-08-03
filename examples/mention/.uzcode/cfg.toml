@@ -69,7 +69,7 @@ enable = ["logging", "file_cru", "task_summary", "skills", "shell", "web"]
 # enable = []              # no catalog, no read_skill tools
 # enable = ["demo-skill"]  # whitelist only
 
-[extension.task_summary]
+[exts.task_summary]
 auto_open = true
 task_summary_path = ".uzcode/summaries"
 

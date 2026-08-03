@@ -31,6 +31,7 @@ class Config:
     loop: LoopConfig = field(default_factory=LoopConfig)
     tools: dict[str, dict[str, Any]] = field(default_factory=dict)
     extension: dict[str, Any] = field(default_factory=dict)
+    exts: dict[str, Any] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -64,5 +65,6 @@ class Config:
             ),
             tools=raw.get("tools", {}),
             extension=raw.get("extension", {}),
+            exts=raw.get("exts", {}),
             raw=raw,
         )
