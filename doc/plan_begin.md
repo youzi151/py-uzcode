@@ -241,10 +241,10 @@ enable = ["logging", "file_cru", "skills", "shell"]
 **Mention（`web` mid，exact `cmd`）：**
 
 ```text
-@{search:python for loop}     → replacement 短索引（需 tool）
-@{search!:python for loop}    → 預載 web_search
-@{fetch:https://example.com}  → replacement 短索引
-@{fetch!:https://example.com} → 預載 web_fetch
+@{search:python for loop}     → replacement 短索引（title + link；無 snippet／正文）
+@{search!:python for loop}    → 短索引 + 預載 web_search（含 snippet）
+@{fetch:https://example.com}  → replacement 短索引（url ± title；無正文）
+@{fetch!:https://example.com} → 短索引 + 預載 web_fetch（正文）
 ```
 
 `cmd` 含 `!` 與否由 mid 全字串比對決定；引擎不解釋 bang。tool 未註冊時 skip／stderr 提示。
@@ -416,5 +416,5 @@ Pending: CodingAgent API、README、內建 skill pack、智慧匹配 …
 
 ---
 
-**專案狀態**：Phase 0–6 完成（Mention）；下一步 Phase 7 Web Search/Fetch（`ddgs` + `httpx`/`trafilatura`）
+**專案狀態**：Phase 0–7 完成（Web Search/Fetch）；下一步 Phase 8 History
 **參考**：與 Aider、OpenHands 相比，uzcode 專注透明度、可控性與極簡，方便 debug / replay。

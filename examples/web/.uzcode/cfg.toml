@@ -1,0 +1,33 @@
+[llm]
+base_url = "http://127.0.0.1:8081/v1"
+api_key = "1"
+model = "1"
+
+[loop]
+auto_loop = true
+max_iterations = 20
+
+[tools.web_search]
+enable = true
+permission = "approve"
+max_results = 5
+backend = "auto"
+# backend = "google,bing,duckduckgo"
+
+[tools.web_fetch]
+enable = true
+permission = "approve"
+max_chars = 32768
+timeout_sec = 30
+
+[middleware]
+enable = ["logging", "web"]
+
+[middleware.order.handle_request]
+web = 30
+
+[middleware.order.before_llm]
+logging = 10
+
+[middleware.order.after_llm]
+logging = 100

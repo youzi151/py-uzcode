@@ -110,13 +110,13 @@
 
 依賴：`ddgs`、`httpx` + `trafilatura`。詳見 [plan_begin.md](./plan_begin.md) Phase 7。
 
-Mention：`@{search|fetch[:!]:text}`（引擎解析；`web` mid exact `cmd`）。
+Mention：`@{search|fetch[:!]:text}`（引擎解析；`web` mid exact `cmd`）。Expand 僅 title/link 短索引；正文／snippet 只在 tool result（runtime 或 `!` precall）。
 
-- [ ] `pyproject.toml`：加入 `ddgs`、`httpx`、`trafilatura`
+- [x] `pyproject.toml`：加入 `ddgs`、`httpx`、`trafilatura`
 - [x] 內建 mid **`web`**：`handle_request` 處理 search/fetch mentions（tools 未註冊則 skip）
-- [ ] 註冊 `web_search`／`web_fetch` tools；尊重 cfg `enable`／`permission`
-- [ ] 範例：`@{search!:...}`／`@{fetch!:...}` 的 req／cfg
-- [ ] 手動驗收：tool 搜尋／抓頁；precall／短索引；tool 未開時不炸
+- [x] 註冊 `web_search`／`web_fetch` tools；尊重 cfg `enable`／`permission`
+- [x] 範例：`@{search!:...}`／`@{fetch!:...}` 的 req／cfg
+- [x] 手動驗收：tool 搜尋／抓頁；precall／短索引；tool 未開時不炸
 
 **本階段不做**：JS 渲染、付費搜尋 API、快取／index、跳脫、下載二進位。
 

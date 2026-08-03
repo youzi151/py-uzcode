@@ -7,6 +7,10 @@ import sys
 import uuid
 from typing import Any
 
+from uzcode.tools.registry import tool_cfg
+
+from . import handlers
+
 _MARK = "web"
 _EXPAND_CMDS = frozenset({"search", "fetch"})
 _PRECALL_CMDS = frozenset({"search!", "fetch!"})
@@ -92,21 +96,6 @@ def _tool_registered(registry: Any, name: str) -> bool:
     return get(name) is not None
 
 
-def _execute_tool(
-    registry: Any,
-    name: str,
-    arguments: dict[str, Any],
-    ctx: dict[str, Any],
-) -> str:
-    tools = getattr(registry, "tools", None)
-    if tools is None:
-        raise RuntimeError(f"web: tool registry unavailable for {name!r}")
-    execute = getattr(tools, "execute", None)
-    if execute is None:
-        raise RuntimeError(f"web: tools.execute unavailable for {name!r}")
-    return execute(name, arguments, ctx)
-
-
 def _mark_handled(mention: dict[str, Any]) -> None:
     handled = list(mention.get("handled") or [])
     if _MARK not in handled:
@@ -114,30 +103,51 @@ def _mark_handled(mention: dict[str, Any]) -> None:
     mention["handled"] = handled
 
 
-def _tool_args(cmd: str, text: str) -> dict[str, Any]:
-    if cmd.startswith("search"):
-        return {"query": text}
-    return {"url": text}
+def _search_pair(text: str, config: Any) -> tuple[str, str]:
+    """Return (index_replacement, full_tool_content) from one search."""
+    max_results, backend = handlers.search_defaults(
+        tool_cfg(config, "web_search") if config is not None else {}
+    )
+    results = handlers.search_results(
+        text, max_results=max_results, backend=backend
+    )
+    return (
+        handlers.format_search_index(text, results),
+        handlers.format_search_full(text, results),
+    )
 
 
-def _arg_key(cmd: str) -> str:
-    return "query" if cmd.startswith("search") else "url"
+def _fetch_pair(text: str, config: Any) -> tuple[str, str]:
+    """Return (index_replacement, full_tool_content) from one fetch."""
+    max_chars, timeout_sec = handlers.fetch_defaults(
+        tool_cfg(config, "web_fetch") if config is not None else {}
+    )
+    page = handlers.fetch_page(text, timeout_sec=timeout_sec)
+    url = page.get("url") or text
+    title = page.get("title") or ""
+    index = handlers.format_fetch_index(url, title)
+    if "error" in page and "text" not in page:
+        err = page["error"]
+        parts = [f"Error: {err}", f"url: {url}"]
+        if title:
+            parts.append(f"title: {title}")
+        return index, "\n".join(parts)
+    full = handlers.format_fetch_full(
+        url, title, page.get("text") or "", max_chars=max_chars
+    )
+    return index, full
 
 
 def handle_web_mentions(ctx: dict[str, Any], registry: Any) -> dict[str, Any]:
-    """Handle search/fetch mentions when web_* tools are registered."""
+    """Handle search/fetch mentions when web_* tools are registered.
+
+    Expand (no bang): title/link index only in ``replacement`` (no body/snippets).
+    Precall (bang): same index in ``replacement`` + inject full tool result.
+    """
     state = ctx.setdefault("state", {})
     config = ctx.get("config")
     messages = list(state.get("messages") or [])
     mentions = list(state.get("mentions") or [])
-
-    work_dir = getattr(config, "work_dir", ".")
-    tool_ctx = {
-        "state": state,
-        "config": config,
-        "tool": {"work_dir": str(work_dir)},
-        "error": None,
-    }
 
     injections: list[tuple[int, list[dict[str, Any]]]] = []
     pending: set[tuple[str, str]] = set()
@@ -160,38 +170,52 @@ def handle_web_mentions(ctx: dict[str, Any], registry: Any) -> dict[str, Any]:
             )
             continue
 
-        args = _tool_args(cmd, text)
-        key = _arg_key(cmd)
+        base = "search" if cmd.startswith("search") else "fetch"
+        arg_key = "query" if base == "search" else "url"
+        args = {arg_key: text}
         pend_key = (tool_name, text)
+        want_precall = cmd in _PRECALL_CMDS
 
-        if cmd in _EXPAND_CMDS:
-            # Short index via a live tool call; keep result brief for content.
-            try:
-                result = _execute_tool(registry, tool_name, args, tool_ctx)
-            except Exception as exc:  # noqa: BLE001
-                print(f"[web] {tool_name} failed for expand: {exc}", file=sys.stderr)
-                _mark_handled(mention)
-                continue
-            preview = result if len(result) <= 200 else result[:197] + "..."
-            mention["replacement"] = f"[{cmd}: {text} | {preview}]"
-        else:
-            if pend_key in pending or _already_tool_result(
-                messages, tool_name, key, text
-            ):
-                _mark_handled(mention)
-                continue
-            try:
-                result = _execute_tool(registry, tool_name, args, tool_ctx)
-            except Exception as exc:  # noqa: BLE001
-                print(f"[web] {tool_name} failed for precall: {exc}", file=sys.stderr)
-                _mark_handled(mention)
-                continue
-            msg_index = int(mention.get("msg_index", -1))
-            if msg_index >= 0:
-                injections.append(
-                    (msg_index, _synthetic_tool_pair(tool_name, args, result))
+        try:
+            if want_precall:
+                if base == "search":
+                    index, full = _search_pair(text, config)
+                else:
+                    index, full = _fetch_pair(text, config)
+            elif base == "search":
+                max_results, backend = handlers.search_defaults(
+                    tool_cfg(config, "web_search") if config is not None else {}
                 )
-            pending.add(pend_key)
+                results = handlers.search_results(
+                    text, max_results=max_results, backend=backend
+                )
+                index, full = handlers.format_search_index(text, results), ""
+            else:
+                _, timeout_sec = handlers.fetch_defaults(
+                    tool_cfg(config, "web_fetch") if config is not None else {}
+                )
+                page = handlers.fetch_page(text, timeout_sec=timeout_sec)
+                index = handlers.format_fetch_index(
+                    page.get("url") or text, page.get("title") or ""
+                )
+                full = ""
+        except Exception as exc:  # noqa: BLE001
+            print(f"[web] {tool_name} failed: {exc}", file=sys.stderr)
+            _mark_handled(mention)
+            continue
+
+        mention["replacement"] = index
+
+        if want_precall:
+            if pend_key not in pending and not _already_tool_result(
+                messages, tool_name, arg_key, text
+            ):
+                msg_index = int(mention.get("msg_index", -1))
+                if msg_index >= 0:
+                    injections.append(
+                        (msg_index, _synthetic_tool_pair(tool_name, args, full))
+                    )
+                pending.add(pend_key)
 
         _mark_handled(mention)
 

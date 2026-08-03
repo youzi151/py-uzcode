@@ -50,6 +50,17 @@ enable = true
 permission = "ask"
 timeout_sec = 60
 
+[tools.web_search]
+enable = true
+permission = "approve"
+max_results = 5
+
+[tools.web_fetch]
+enable = true
+permission = "approve"
+max_chars = 32768
+timeout_sec = 30
+
 [middleware]
 enable = ["logging", "file_cru", "task_summary", "skills", "shell", "web"]
 

@@ -122,5 +122,5 @@ result = agent.run(request_path="request.toml")
 
 ---
 
-**專案狀態**：Phase 0–6 完成（Mention）；下一步 Phase 7 Web Search/Fetch
+**專案狀態**：Phase 0–7 完成（Web Search/Fetch）；下一步 Phase 8 History
 **核心原則**：Keep it simple, give control to the user.
