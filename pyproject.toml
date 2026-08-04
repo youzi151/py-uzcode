@@ -12,6 +12,7 @@ dependencies = [
     "ddgs>=9.14.4",
     "httpx>=0.28.1",
     "trafilatura>=2.1.0",
+    "overdict",
 ]
 
 [project.scripts]
@@ -23,3 +24,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/uzcode"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/uzcode/cfgs" = "uzcode/cfgs"
+
+[tool.uv.sources]
+overdict = { git = "https://github.com/youzi151/py-overdict" }

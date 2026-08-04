@@ -1,0 +1,9 @@
+[llm]
+base_url = "http://127.0.0.1:8081/v1"
+api_key = "1"
+model = "1"
+
+[extension]
+enable = ["logging"]
+[extension.__merge]
+enable = "concat"

@@ -1,0 +1,5 @@
+[tools.edit_file]
+enable = false
+
+[tools.write_file]
+permission = "approve"

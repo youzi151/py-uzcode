@@ -1,4 +1,4 @@
-"""Config and request TOML loaders."""
+"""Config and request data types."""
 
 from uzcode.data.config import Config, LLMConfig, LoopConfig
 from uzcode.data.request import Message, Request

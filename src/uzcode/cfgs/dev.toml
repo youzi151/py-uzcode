@@ -1,44 +1,31 @@
-[llm]
-base_url = "http://127.0.0.1:8081/v1"
-api_key = "1"
-model = "1"
-
 [loop]
 auto_loop = true
-max_iterations = 20
+max_iterations = 10
 
 [tools.read_file]
-enable = true
 permission = "approve"
 
 [tools.list_dir]
-enable = true
 permission = "approve"
 
 [tools.grep]
-enable = true
 permission = "approve"
 
 [tools.write_file]
-enable = true
-permission = "ask"
 preview_diff = true
-retry = 0
 on_failure = "abort"
 
 [tools.edit_file]
-enable = true
-permission = "ask"
 preview_diff = true
-retry = 0
 on_failure = "abort"
 
 [tools.summarize_task]
-enable = true
 permission = "approve"
 
 [extension]
-enable = ["logging", "file_cru", "task_summary"]
+enable = ["file_cru", "task_summary"]
+[extension.__merge]
+enable = "concat"
 
 [exts.task_summary]
 auto_open = true

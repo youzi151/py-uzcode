@@ -1641,6 +1641,11 @@ wheels = [
 ]
 
 [[package]]
+name = "overdict"
+version = "0.1.0"
+source = { git = "https://github.com/youzi151/py-overdict#30c061bebe286d8872c735f488771a1e571f89bd" }
+
+[[package]]
 name = "packaging"
 version = "26.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2604,6 +2609,7 @@ dependencies = [
     { name = "httpx" },
     { name = "langgraph" },
     { name = "litellm" },
+    { name = "overdict" },
     { name = "tomli-w" },
     { name = "trafilatura" },
 ]
@@ -2615,6 +2621,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "langgraph", specifier = ">=1.2.9" },
     { name = "litellm", specifier = ">=1.92" },
+    { name = "overdict", git = "https://github.com/youzi151/py-overdict" },
     { name = "tomli-w", specifier = ">=1.2" },
     { name = "trafilatura", specifier = ">=2.1.0" },
 ]

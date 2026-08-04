@@ -1,8 +1,7 @@
-"""Load and parse .uzcode/cfg.toml."""
+"""Parse Config from a merged cfg dict (excluding ``request``)."""
 
 from __future__ import annotations
 
-import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -24,7 +23,7 @@ class LoopConfig:
 
 @dataclass
 class Config:
-    """Global settings loaded from {work_dir}/.uzcode/cfg.toml."""
+    """Global settings from merged cfg layers (excluding ``request``)."""
 
     work_dir: Path
     llm: LLMConfig = field(default_factory=LLMConfig)
@@ -35,22 +34,10 @@ class Config:
     raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def load(cls, work_dir: str | Path) -> Config:
+    def from_dict(cls, work_dir: str | Path, raw: dict[str, Any]) -> Config:
         work_dir = Path(work_dir).resolve()
-        cfg_path = work_dir / ".uzcode" / "cfg.toml"
-
-        if not cfg_path.is_file():
-            raise FileNotFoundError(
-                f"Config not found: {cfg_path}\n"
-                f"Create .uzcode/cfg.toml in your work directory."
-            )
-
-        with cfg_path.open("rb") as f:
-            raw = tomllib.load(f)
-
         llm_raw = raw.get("llm", {})
         loop_raw = raw.get("loop", {})
-
         return cls(
             work_dir=work_dir,
             llm=LLMConfig(
@@ -61,7 +48,9 @@ class Config:
             ),
             loop=LoopConfig(
                 auto_loop=loop_raw.get("auto_loop", LoopConfig.auto_loop),
-                max_iterations=loop_raw.get("max_iterations", LoopConfig.max_iterations),
+                max_iterations=loop_raw.get(
+                    "max_iterations", LoopConfig.max_iterations
+                ),
             ),
             tools=raw.get("tools", {}),
             extension=raw.get("extension", {}),

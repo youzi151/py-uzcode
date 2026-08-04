@@ -1,12 +1,13 @@
-"""Load and write req.toml request files."""
+"""Load and write request TOML (``[request]`` section only on disk)."""
 
 from __future__ import annotations
 
-import tomllib
-import tomli_w
-from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+import tomli_w
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -53,9 +54,19 @@ class Message:
         )
 
 
+def _backup_existing(out: Path, work_dir: Path) -> None:
+    if not out.is_file():
+        return
+    bak_dir = work_dir / ".uzcode" / "outbak"
+    bak_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    bak_path = bak_dir / f"{out.name}.{stamp}.toml"
+    out.replace(bak_path)
+
+
 @dataclass
 class Request:
-    """A single agent request loaded from req.toml."""
+    """A single agent request (``[request]`` in merged cfg / output)."""
 
     path: Path
     work_dir: Path
@@ -63,41 +74,31 @@ class Request:
     raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def load(cls, req_path: str | Path, work_dir: str | Path | None = None) -> Request:
-        req_path = Path(req_path)
-        if not req_path.is_absolute() and work_dir is not None:
-            req_path = Path(work_dir).resolve() / req_path
-        else:
-            req_path = req_path.resolve()
-
-        if not req_path.is_file():
-            raise FileNotFoundError(f"Request file not found: {req_path}")
-
-        with req_path.open("rb") as f:
-            raw = tomllib.load(f)
-
-        messages = [Message.from_dict(m) for m in raw.get("messages", [])]
-
+    def from_dict(
+        cls,
+        path: str | Path,
+        work_dir: str | Path,
+        data: dict[str, Any],
+    ) -> Request:
+        path = Path(path)
+        work_dir = Path(work_dir).resolve()
+        messages = [Message.from_dict(m) for m in data.get("messages", [])]
         return cls(
-            path=req_path,
-            work_dir=req_path.parent,
+            path=path,
+            work_dir=work_dir,
             messages=messages,
-            raw=raw,
+            raw=data,
         )
 
     def write(self, path: str | Path | None = None) -> None:
-        """Write request back to TOML using editable [[messages]] tables.
-
-        Messages must be dumped as a single ``{"messages": [...]}`` document so
-        nested arrays (e.g. ``tool_calls``) become ``[[messages.tool_calls]]``.
-        Prefixing ``[[messages]]`` onto a per-message dump would emit top-level
-        ``[[tool_calls]]`` and detach them on the next load.
-
-        Always persist ``content``. Also persist ``raw`` when it differs.
-        """
-
+        """Write request-only TOML under ``[request]``; backup if target exists."""
         out = Path(path or self.path)
-        chunks: list[str] = []
+        if not out.is_absolute():
+            out = (self.work_dir / out).resolve()
+        else:
+            out = out.resolve()
+
+        _backup_existing(out, self.work_dir)
 
         messages: list[dict[str, Any]] = []
         for msg in self.messages:
@@ -112,7 +113,9 @@ class Request:
             entry.update(msg.extra)
             messages.append(entry)
 
-        if messages:
-            chunks.append(tomli_w.dumps({"messages": messages}).rstrip())
-
-        out.write_text(("\n\n".join(chunks) + "\n") if chunks else "", encoding="utf-8")
+        body: dict[str, Any] = dict(self.raw)
+        body["messages"] = messages
+        text = tomli_w.dumps({"request": body}).rstrip() + "\n"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
+        self.path = out

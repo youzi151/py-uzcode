@@ -1,0 +1,1 @@
+uv run uzcode --workdir ./ --cfg base dev local req.toml

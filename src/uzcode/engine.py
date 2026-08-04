@@ -457,7 +457,7 @@ def _build_graph(config: Config, registry: HookRegistry):
         api_key = config.llm.api_key or os.environ.get(config.llm.api_key_env)
         if not api_key:
             raise RuntimeError(
-                "API key not found: set llm.api_key in cfg.toml "
+                "API key not found: set llm.api_key in cfg "
                 f"or environment variable {config.llm.api_key_env!r}"
             )
         iteration = int(state.get("iteration", 0)) + 1
@@ -545,7 +545,7 @@ def _build_graph(config: Config, registry: HookRegistry):
                 messages.append(
                     _new_text_message(
                         "tool",
-                        f"Error: tool {name!r} is disabled in cfg.toml",
+                        f"Error: tool {name!r} is disabled in cfg",
                         tool_call_id=call_id,
                     )
                 )
