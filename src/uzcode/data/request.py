@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -54,19 +54,52 @@ class Message:
         )
 
 
-def _backup_existing(out: Path, work_dir: Path) -> None:
-    if not out.is_file():
-        return
-    bak_dir = work_dir / ".uzcode" / "outbak"
+def copy_request_to_reqbak(session_dir: str | Path, stamp: str) -> Path | None:
+    """Copy ``request.toml`` into ``reqbak/`` before a run. Returns bak path or None."""
+    session_dir = Path(session_dir).resolve()
+    src = session_dir / "request.toml"
+    if not src.is_file():
+        return None
+    bak_dir = session_dir / "reqbak"
     bak_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    bak_path = bak_dir / f"{out.name}.{stamp}.toml"
-    out.replace(bak_path)
+    bak_path = bak_dir / f"request.{stamp}.toml"
+    shutil.copy2(src, bak_path)
+    return bak_path
+
+
+def persist_session(
+    session_dir: str | Path,
+    request: Request,
+    appended: list[Message],
+    *,
+    stamp: str,
+) -> None:
+    """Write ``diffs/<stamp>.toml`` and overwrite session ``request.toml``."""
+    session_dir = Path(session_dir).resolve()
+    request.write(
+        session_dir / "diffs" / f"{stamp}.toml",
+        messages=appended,
+        messages_only=True,
+    )
+    request.write(session_dir / "request.toml")
+
+
+def _message_to_toml(msg: Message) -> dict[str, Any]:
+    entry: dict[str, Any] = {"role": msg.role}
+    if msg.raw != msg.content:
+        entry["raw"] = msg.raw
+    entry["content"] = msg.content
+    if msg.name is not None:
+        entry["name"] = msg.name
+    if msg.tool_call_id is not None:
+        entry["tool_call_id"] = msg.tool_call_id
+    entry.update(msg.extra)
+    return entry
 
 
 @dataclass
 class Request:
-    """A single agent request (``[request]`` in merged cfg / output)."""
+    """A single agent request (``[request]`` in session ``request.toml``)."""
 
     path: Path
     work_dir: Path
@@ -90,31 +123,33 @@ class Request:
             raw=data,
         )
 
-    def write(self, path: str | Path | None = None) -> None:
-        """Write request-only TOML under ``[request]``; backup if target exists."""
+    def write(
+        self,
+        path: str | Path | None = None,
+        *,
+        messages: list[Message] | None = None,
+        messages_only: bool = False,
+    ) -> None:
+        """Write request-only TOML under ``[request]``.
+
+        ``messages`` defaults to ``self.messages``. When ``messages_only`` is
+        true, only ``messages`` are written (no other ``raw`` keys).
+        """
         out = Path(path or self.path)
         if not out.is_absolute():
             out = (self.work_dir / out).resolve()
         else:
             out = out.resolve()
 
-        _backup_existing(out, self.work_dir)
+        to_write = self.messages if messages is None else messages
+        serialized = [_message_to_toml(msg) for msg in to_write]
 
-        messages: list[dict[str, Any]] = []
-        for msg in self.messages:
-            entry: dict[str, Any] = {"role": msg.role}
-            if msg.raw != msg.content:
-                entry["raw"] = msg.raw
-            entry["content"] = msg.content
-            if msg.name is not None:
-                entry["name"] = msg.name
-            if msg.tool_call_id is not None:
-                entry["tool_call_id"] = msg.tool_call_id
-            entry.update(msg.extra)
-            messages.append(entry)
+        if messages_only:
+            body: dict[str, Any] = {"messages": serialized}
+        else:
+            body = dict(self.raw)
+            body["messages"] = serialized
 
-        body: dict[str, Any] = dict(self.raw)
-        body["messages"] = messages
         text = tomli_w.dumps({"request": body}).rstrip() + "\n"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(text, encoding="utf-8")

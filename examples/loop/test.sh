@@ -1,1 +1,1 @@
-uv run uzcode --workdir ./ --cfg base dev local req.toml
+uv run uzcode --workdir ./ --cfg @dev local --session demo

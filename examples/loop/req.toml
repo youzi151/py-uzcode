@@ -1,7 +1,0 @@
-[[request.messages]]
-role = "system"
-content = "You are a coding agent. Be concise and helpful."
-
-[[request.messages]]
-role = "user"
-content = "find the text file include email address in work dir, and write into an array to ./result.json.\n you can just reply short msg, it is more important on tool calls"

@@ -6,7 +6,6 @@ import json
 import os
 import re
 import sys
-from pathlib import Path
 from typing import Any, TypedDict
 
 import litellm
@@ -664,14 +663,18 @@ def run(
     config: Config,
     request: Request,
     *,
-    out_path: str | Path | None = None,
     registry: HookRegistry | None = None,
-) -> Request:
-    """Run LLM ↔ tools loop (auto_loop / max_iterations), write results to TOML."""
+) -> tuple[Request, list[Message]]:
+    """Run LLM ↔ tools loop; return full transcript and messages appended this run.
+
+    No disk I/O — callers (CLI) persist session artifacts.
+    """
     reg = registry if registry is not None else HookRegistry()
     graph = _build_graph(config, reg)
 
     messages = _messages_to_dicts(request.messages)
+    body, _ = _peel_system_messages(messages, [])
+    base_body_len = len(body)
     initial: AgentState = {
         "messages": messages,
         "system_messages": [],
@@ -708,5 +711,12 @@ def run(
         raise
 
     request.messages = [Message.from_dict(m) for m in messages]
-    request.write(out_path)
-    return request
+    new_body = (final.get("messages") or [])[base_body_len:]
+    diff_payload = _persist_messages(
+        {
+            "messages": new_body,
+            "system_messages": [],
+        }
+    )
+    appended = [Message.from_dict(m) for m in diff_payload]
+    return request, appended

@@ -4,19 +4,37 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from uzcode.data import Config, Request
-from uzcode.engine import run as run_engine
+from uzcode import cfg
+from uzcode import engine
+from uzcode.cfg import PrepareMeta
+from uzcode.data import Config, Message, Request
 from uzcode.extension import load_extensions
 
-__all__ = ["CodingAgent", "Config", "Request"]
+__all__ = ["CodingAgent", "Config", "Message", "PrepareMeta", "Request"]
 
 
 class CodingAgent:
-    """Public API: run engine with prepared Config and Request."""
+    """Public API: prepare Config/Request from cfg+session, then run the engine."""
 
     def __init__(self, work_dir: str | Path = "."):
         self.work_dir = Path(work_dir).resolve()
 
-    def run(self, config: Config, request: Request, *, out_path: str | Path) -> Request:
+    def prepare(
+        self,
+        cfg_tokens: list[str],
+        session: str,
+    ) -> tuple[Config, Request, PrepareMeta]:
+        """Collect cfg + session via ``cfg.prepare``."""
+        return cfg.prepare(self.work_dir, cfg_tokens, session)
+
+    def run(
+        self,
+        config: Config,
+        request: Request,
+    ) -> tuple[Request, list[Message]]:
+        """Run the agent loop. Returns full transcript and messages appended this run.
+
+        Does not write session files — callers persist (CLI does reqbak/diffs/request.toml).
+        """
         registry = load_extensions(self.work_dir, config)
-        return run_engine(config, request, out_path=out_path, registry=registry)
+        return engine.run(config, request, registry=registry)

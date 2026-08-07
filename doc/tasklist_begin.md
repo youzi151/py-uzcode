@@ -122,13 +122,15 @@ Mention：`@{search|fetch[:!]:text}`（引擎解析；`web` ext exact `cmd`）�
 
 ---
 
-## Phase 8 — History
+## Phase 8 — Sessions（取代 History / outbak）
 
-**完成標準**：cfg 開啟後，每次成功執行在 `.uzcode/history/` 留下可 replay 的 request 複本。
+**完成標準**：`--session` 必填；每次執行寫入 `reqbak/` + `diffs/` 並覆寫 `request.toml`。
 
-- [ ] 成功路徑快照（`on_result` ext 或 `engine.run` 後 helper）
-- [ ] cfg 開關（預設關閉）
-- [ ] 手動驗收：執行後 history 目錄有複本，可當 `--req` replay
+- [x] CLI：`--workdir` / `--cfg` / `--session`（移除 `--out` / `--full` / `--diff`）
+- [x] Engine：純 in-memory（config + request → transcript + appended）
+- [x] CodingAgent.prepare → `cfg.prepare`（session `request.toml` 作最後一層 merge）
+- [x] CLI：parse + reqbak + run + persist（diffs / request.toml）
+- [x] 範例改為 `.uzcode/sessions/demo/request.toml`
 
 ---
 
@@ -136,8 +138,8 @@ Mention：`@{search|fetch[:!]:text}`（引擎解析；`web` ext exact `cmd`）�
 
 以下不開階段任務，避免 scope creep：
 
-- [ ] 公開 API 打磨：`CodingAgent(work_dir).run(request_path=...)`
-- [ ] README：安裝、CLI、cfg / req 契約、自訂 extension 步驟
+- [ ] 公開 API 打磨：`CodingAgent(work_dir).run(config, request)` → `(Request, appended)`
+- [ ] README：安裝、CLI、cfg / session 契約、自訂 extension 步驟
 - [ ] 套件內建 `src/skills/` pack
 - [ ] 依 skill description 智慧匹配
 
@@ -156,8 +158,8 @@ Mention：`@{search|fetch[:!]:text}`（引擎解析；`web` ext exact `cmd`）�
 
 ## 整體驗收（全部 Phase 完成後勾選）
 
-- [ ] 一次 CLI：載入 `req.toml` → LLM + tools 迴圈 → 結果透明寫回（或指定輸出）
-- [ ] 手改 `req.toml` 後可直接 replay / fork
+- [ ] 一次 CLI：載入 session `request.toml` → LLM + tools 迴圈 → 寫回 session
+- [ ] 手改 `request.toml` 後可直接 replay / fork
 - [ ] extension 可攔截寫檔類 tool（confirm / preview），無需改引擎
 - [ ] 工作目錄無未確認變更、無自動 git 副作用
 

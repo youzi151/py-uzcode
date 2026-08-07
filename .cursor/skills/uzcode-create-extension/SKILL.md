@@ -48,7 +48,7 @@ START → before_llm → call_llm → after_llm → run_tools → after_tools
           ↓
        before_llm …
           │
-          └─ else / stop_loop / max_iterations → on_result → write req.toml
+          └─ else / stop_loop / max_iterations → on_result → write session artifacts
 Exception path → on_error (best-effort) then re-raise
 ```
 

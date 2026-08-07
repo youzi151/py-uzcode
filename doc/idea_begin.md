@@ -16,7 +16,7 @@
 ```bash
 {work_dir}/
 ├── .uzcode/
-│   ├── cfg.toml             # 全域設定、loop 策略、tool 權限、API Key
+│   ├── cfgs/                # 專案 cfg 疊層（可選）
 │   ├── skills/              # Skill 檔
 │   │   ├── my_skill/
 │   │   │   └── SKILL.md
@@ -28,23 +28,27 @@
 │   │   ├── logging
 │   │   │   └─ __init__.py
 │   │   └── ...
-│   └── history/             # (可選) 歷史 request 快照
-├── req.toml                 # 本次請求（可由 CLI 指定其他檔案）
+│   └── sessions/            # 互動紀錄（session）
+│       └── <name>/
+│           ├── request.toml # 完整 transcript（使用者可手改）
+│           ├── reqbak/      # 每次執行前的 request 備份
+│           └── diffs/       # 每次執行新增的 messages
 └── ... (你的專案檔案)
 ```
 
 ## 核心元件
 
-### 1. Config (` .uzcode/cfg.toml`)
+### 1. Config (`--cfg` 疊層)
 - LLM 設定（固定使用 OpenAI Chat Completions API）
 - Loop 設定（`auto_loop`、`max_iterations` 等）
 - 各 Tool 的權限與行為（`require_confirm`、`preview_diff`、`retry`、`on_failure`）
 - Extension 載入順序與設定
+- 可含 `[request]`：與其他層一樣經 overdict merge（常用于注入 prompt／messages）
 
-### 2. Request (`req.toml`)
-- 存放 要送給LLM的資訊
-- 完整 `messages` 陣列（system、user、assistant、tool）
-- 執行後可以從output中提取下次提問所需相關資訊與紀錄，如 user message, llm response, etc.，更新進req.toml中
+### 2. Session (` .uzcode/sessions/<name>/request.toml`)
+- 作為 **最後一層 cfg** 參與 merge（與一般 `--cfg` 檔相同）
+- 存放 durable transcript；執行前 `reqbak/`，執行後覆寫並寫入 `diffs/`
+- 使用者可手改後再跑，做 replay / fork
 
 ### 3. Extension 系統
 最強大的擴充機制。可在以下階段介入：
@@ -75,7 +79,7 @@
 4. 處理 tool calls（尊重 config 權限）
 5. 如啟用 auto_loop 則繼續直到無 tool calls
 6. After extension
-7. (可選) 把重要結果 save 回主要 req.toml
+7. 寫回 session：`reqbak/` + `diffs/` + 覆寫 `request.toml`
 
 ### 6. Tools（基礎集合）
 - `read_file` / `write_file` / `edit_file` / `list_dir` / `grep`
@@ -93,11 +97,8 @@
 ## 使用方式
 
 ```bash
-# 基本執行
-uzcode --workdir ./myproject --req request.toml
-
-# 指定輸出（推薦用於版本控制）
-uzcode --req request_v1.toml 
+# 基本執行（cfg 疊層 + session 互動紀錄）
+uzcode --workdir ./myproject --cfg @dev --session sfeature_aaa
 ```
 
 也可作為 Python package 使用：
@@ -106,12 +107,14 @@ uzcode --req request_v1.toml
 from uzcode import CodingAgent
 
 agent = CodingAgent(work_dir="./myproject")
-result = agent.run(request_path="request.toml")
+# config, request, meta = agent.prepare(["@dev"], "sfeature_aaa")
+# request, appended = agent.run(config, request)
+# CLI persists session files (reqbak / diffs / request.toml)
 ```
 
 ## 未來擴充方向
 
-- Skills／Mention／Web Search-Fetch／History 快照（見 plan Phase 5–8）
+- Skills／Mention／Web Search-Fetch（見 plan Phase 5–7）；History 由 sessions 取代
 - 多模型支援（透過 extension）
 - 更多基礎 tools
 - 簡單 CLI REPL（可選）
@@ -122,5 +125,5 @@ result = agent.run(request_path="request.toml")
 
 ---
 
-**專案狀態**：Phase 0–7 完成（Web Search/Fetch）；下一步 Phase 8 History
+**專案狀態**：Phase 0–7 完成；Phase 8 History 由 `.uzcode/sessions/` 取代
 **核心原則**：Keep it simple, give control to the user.

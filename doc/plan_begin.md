@@ -12,7 +12,7 @@
 
 | 原則           | 含義                                             |
 | ------------ | ---------------------------------------------- |
-| Stateless 第一 | 每次執行只依完整的 `req.toml`，無隱藏狀態                     |
+| Stateless 第一 | 每次執行只依 session `request.toml`，無隱藏狀態               |
 | 使用者主導        | 可任意修改歷史訊息、tool results、甚至先前 AI 回應              |
 | 極簡核心         | 引擎只負責必要流程                                      |
 | 高度可擴充        | diff preview、logging、權限、多模型轉換等皆由 extension 實作 |
@@ -50,14 +50,17 @@ src/uzcode/
 ```text
 {work_dir}/
 ├── .uzcode/
-│   ├── cfg.toml             # 全域設定、loop、tool 權限、API Key
+│   ├── cfgs/                # 專案 cfg 疊層（可選）
 │   ├── skills/              # Skill 檔（使用者放置；僅 */SKILL.md）
 │   │   └── deploy-app/
 │   │       └── SKILL.md
 │   ├── exts/                # 使用者自訂 extension（外部；同名覆寫內建）
 │   │   └── ...
-│   └── history/             # （可選）歷史 request 快照（Phase 8）
-├── req.toml                 # 本次請求（可由 CLI 指定其他檔案）
+│   └── sessions/            # 互動 session（取代 history / outbak）
+│       └── <name>/
+│           ├── request.toml
+│           ├── reqbak/
+│           └── diffs/
 └── ... (專案檔案)
 
 src/extensions/             # 內建 extension（隨套件）
@@ -272,16 +275,16 @@ permission = "approve"
 
 **完成標準**：啟用 `web` 後 LLM 可呼叫 `web_*`；req 含 `@{search!:...}`／`@{fetch!:...}` 時預載 tool result；寫回可 replay。
 
-### Phase 8 — History
+### Phase 8 — Sessions（取代 History / outbak）
 
-執行成功後可選快照 request 到 `.uzcode/history/`（時間戳或 hash 複本）。掛點：`on_result` ext，或 `engine.run` 成功後的薄 helper。須經 cfg 開啟。
+CLI 改為 session-only：`--workdir` + `--cfg` + `--session`。`cfg.prepare`（經 `CodingAgent.prepare`）將 session `request.toml` 當最後一層 cfg merge；Engine 只回傳 in-memory transcript；CLI 負責 `reqbak/`、`diffs/`、覆寫 `request.toml`。
 
-**完成標準**：開啟後每次成功執行在 `.uzcode/history/` 留下可 replay 的 request 複本。
+**完成標準**：`uzcode --workdir . --cfg @dev --session demo` 可載入並寫回 session 目錄。
 
 ### Pending（未排期）
 
-- 公開 API 打磨：`CodingAgent(work_dir).run(request_path=...)`
-- README（安裝、CLI、cfg / req 契約、自訂 extension）
+- 公開 API 打磨：`CodingAgent(work_dir).run(config, request)` → `(Request, appended)`
+- README（安裝、CLI、cfg / session 契約、自訂 extension）
 
 ---
 
@@ -349,7 +352,7 @@ logging = 100
 file_cru = 50
 ```
 
-### 4.2 `req.toml`（草圖）
+### 4.2 Session `request.toml`（草圖）
 
 ```toml
 [[messages]]
@@ -366,8 +369,7 @@ content = "請讀取 README 並摘要"
 ### 4.3 CLI
 
 ```bash
-uzcode --workdir ./myproject --req request.toml
-uzcode --req request_v1.toml          # 可指定輸出路徑以利版本控制
+uzcode --workdir ./myproject --cfg @dev --session sfeature_aaa
 ```
 
 ---
@@ -392,8 +394,8 @@ uzcode --req request_v1.toml          # 可指定輸出路徑以利版本控制
 
 ## 7. 驗收標準（整體）
 
-1. 一次 CLI 執行：載入 `req.toml` → LLM + tools 迴圈 → 結果透明寫回（或指定輸出檔）
-2. 使用者可手改 `req.toml` 後直接 replay / fork
+1. 一次 CLI 執行：載入 session `request.toml` → LLM + tools 迴圈 → 寫回 session（reqbak / diffs / request.toml）
+2. 使用者可手改 `request.toml` 後直接 replay / fork
 3. extension 可攔截寫檔類 tool，實作 confirm / preview，無需改引擎
 4. 工作目錄無未確認變更、無自動 git 副作用
 
