@@ -37,7 +37,7 @@ class AgentState(TypedDict):
     """LangGraph node I/O. Ext scratch lives in ``extra``."""
 
     messages: list[dict[str, Any]]
-    system_messages: list[str]
+    message_lib: dict[str, dict[str, Any]]
     skills_enabled: list[str]
     mentions: list[dict[str, Any]]
     iteration: int
@@ -68,10 +68,20 @@ def _copy_mentions(mentions: list[Any] | None) -> list[dict[str, Any]]:
     return out
 
 
+def _copy_message_lib(lib: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(lib, dict):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for key, value in lib.items():
+        if isinstance(value, dict):
+            out[str(key)] = dict(value)
+    return out
+
+
 def _copy_state(state: dict[str, Any]) -> AgentState:
     return {
-        "messages": list(state.get("messages") or []),
-        "system_messages": list(state.get("system_messages") or []),
+        "messages": [dict(m) for m in (state.get("messages") or [])],
+        "message_lib": _copy_message_lib(state.get("message_lib")),
         "skills_enabled": list(state.get("skills_enabled") or []),
         "mentions": _copy_mentions(state.get("mentions")),
         "iteration": int(state.get("iteration", 0)),
@@ -103,15 +113,12 @@ def _state_update(ctx: dict[str, Any]) -> AgentState:
     skills_enabled = state.get("skills_enabled")
     if skills_enabled is not None and not isinstance(skills_enabled, list):
         raise TypeError("state.skills_enabled must be a list")
-    system_messages = state.get("system_messages")
-    if system_messages is not None and not isinstance(system_messages, list):
-        raise TypeError("state.system_messages must be a list")
     mentions = state.get("mentions")
     if mentions is not None and not isinstance(mentions, list):
         raise TypeError("state.mentions must be a list")
     return {
-        "messages": list(state.get("messages") or []),
-        "system_messages": [str(p) for p in (system_messages or [])],
+        "messages": [dict(m) for m in (state.get("messages") or [])],
+        "message_lib": _copy_message_lib(state.get("message_lib")),
         "skills_enabled": [str(n) for n in (skills_enabled or [])],
         "mentions": _copy_mentions(mentions),
         "iteration": int(state.get("iteration", 0)),
@@ -119,48 +126,19 @@ def _state_update(ctx: dict[str, Any]) -> AgentState:
         "extra": dict(state.get("extra") or {}),
     }
 
-
-def _msg_text(msg: dict[str, Any], *, prefer: str = "raw") -> str:
-    """Read message text; prefer ``raw`` for peel/parse, ``content`` for LLM."""
-    if prefer == "content":
-        if msg.get("content") is not None:
-            return str(msg["content"])
-        if msg.get("raw") is not None:
-            return str(msg["raw"])
-        return ""
-    if msg.get("raw") is not None:
-        return str(msg["raw"])
-    if msg.get("content") is not None:
-        return str(msg["content"])
-    return ""
-
-
-def _ensure_raw_content(msg: dict[str, Any]) -> None:
-    """Ensure both raw and content exist; content defaults to raw."""
-    raw = msg.get("raw")
-    content = msg.get("content")
-    if raw is None and content is not None:
-        msg["raw"] = str(content)
-        raw = msg["raw"]
-    if raw is None:
-        msg["raw"] = ""
-        raw = ""
-    else:
-        msg["raw"] = str(raw)
-    if content is None:
-        msg["content"] = str(raw)
-    else:
-        msg["content"] = str(content)
-
-
 def _messages_to_dicts(messages: list[Message]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for msg in messages:
-        entry: dict[str, Any] = {
-            "role": msg.role,
-            "raw": msg.raw,
-            "content": msg.content,
-        }
+        entry: dict[str, Any] = {}
+        if msg.ref is not None:
+            entry["ref"] = msg.ref
+            if msg.role:
+                entry["role"] = msg.role
+            if msg.content:
+                entry["content"] = msg.content
+        else:
+            entry["role"] = msg.role
+            entry["content"] = msg.content
         if msg.name is not None:
             entry["name"] = msg.name
         if msg.tool_call_id is not None:
@@ -201,13 +179,12 @@ def _seed_skills_enabled(config: Config, registry: HookRegistry) -> list[str]:
 
 
 def _parse_mentions(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Parse ``@{cmd:text}`` from user message ``raw`` into AgentState.mentions."""
+    """Parse ``@{cmd:text}`` from user message ``content`` into AgentState.mentions."""
     mentions: list[dict[str, Any]] = []
     for idx, msg in enumerate(messages):
-        _ensure_raw_content(msg)
         if msg.get("role") != "user":
             continue
-        text = _msg_text(msg, prefer="raw")
+        text = msg.get("content", "")
         for match in _MENTION_RE.finditer(text):
             cmd = match.group(1)
             body = match.group(2)
@@ -244,8 +221,7 @@ def _apply_mention_replacements(
 
     for msg_index, items in by_msg.items():
         msg = messages[msg_index]
-        _ensure_raw_content(msg)
-        content = str(msg.get("content") or "")
+        content = str(msg.get("content", ""))
         # Reverse by start so earlier offsets stay valid.
         ordered = sorted(
             items,
@@ -253,7 +229,7 @@ def _apply_mention_replacements(
             reverse=True,
         )
         for mention in ordered:
-            raw_span = str(mention.get("raw") or "")
+            raw_span = str(mention.get("raw", ""))
             if not raw_span:
                 continue
             repl = str(mention["replacement"])
@@ -268,76 +244,75 @@ def _apply_mention_replacements(
         msg["content"] = content
 
 
-def _peel_system_messages(
-    messages: list[dict[str, Any]],
-    system_messages: list[str],
-) -> tuple[list[dict[str, Any]], list[str]]:
-    """Move role=system entries into system_messages; return non-system body."""
-    parts = list(system_messages)
-    body: list[dict[str, Any]] = []
-    for msg in messages:
-        if msg.get("role") == "system":
-            text = _msg_text(msg, prefer="raw")
-            if text:
-                parts.append(text)
-        else:
-            _ensure_raw_content(msg)
-            body.append(msg)
-    return body, parts
-
-
 def _api_message(msg: dict[str, Any]) -> dict[str, Any]:
-    """Project an in-memory message to OpenAI/LiteLLM shape (no ``raw``)."""
-    out: dict[str, Any] = {"role": msg.get("role", "")}
-    out["content"] = _msg_text(msg, prefer="content")
-    if msg.get("name") is not None:
+    """Project an in-memory message to OpenAI/LiteLLM shape (no ``ref``)."""
+    out: dict[str, Any] = {
+        "role": msg.get("role", ""),
+        "content": msg.get("content", ""),
+    }
+    if "name" in msg :
         out["name"] = msg["name"]
-    if msg.get("tool_call_id") is not None:
+    if "tool_call_id" in msg:
         out["tool_call_id"] = msg["tool_call_id"]
-    if msg.get("tool_calls") is not None:
+    if "tool_calls" in msg:
         out["tool_calls"] = msg["tool_calls"]
     return out
 
 
+def _resolve_message(
+    msg: dict[str, Any],
+    message_lib: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Resolve ``ref``: extend from message_lib, then apply own fields."""
+
+    ref = msg.get("ref")
+    if ref is None or str(ref) == "":
+        resolved = {k: v for k, v in msg.items() if k != "ref"}
+        return resolved
+
+    base = message_lib.get(ref)
+
+    if not isinstance(base, dict):
+        raise ValueError(f"message_lib ref {name!r} not found")
+
+    own = {k: v for k, v in msg.items() if k != "ref"}
+    resolved = {**dict(base), **own}
+    if not "content" in resolved or resolved["content"] == "":
+        return None
+    if not "role" in resolved:
+        resolved["role"] = ""
+    return resolved
+
+
 def _llm_messages(state: dict[str, Any]) -> list[dict[str, Any]]:
-    """Merge system_messages into one system message for the API."""
-    body = [
-        _api_message(m)
-        for m in (state.get("messages") or [])
-        if m.get("role") != "system"
-    ]
-    parts = [str(p) for p in (state.get("system_messages") or []) if str(p).strip()]
-    if not parts:
-        return body
-    return [{"role": "system", "content": "\n\n".join(parts)}, *body]
-
-
-def _persist_messages(state: dict[str, Any]) -> list[dict[str, Any]]:
-    """Build Message.from_dict payloads for TOML.
-
-    Keep runtime ``content`` (may be mention-expanded) and ``raw`` (original).
-    ``Message.write`` emits ``raw`` only when it differs from ``content``.
-    """
-    parts = [str(p) for p in (state.get("system_messages") or []) if str(p).strip()]
-    out: list[dict[str, Any]] = []
-    if parts:
-        text = "\n\n".join(parts)
-        out.append({"role": "system", "content": text, "raw": text})
-    for msg in state.get("messages") or []:
-        if msg.get("role") == "system":
+    """Resolve refs against message_lib, then project to API messages (order kept)."""
+    lib = _copy_message_lib(state.get("message_lib"))
+    out = []
+    for m in (state.get("messages") or []):
+        resolved = _resolve_message(m, lib)
+        if resolved is None:
             continue
-        _ensure_raw_content(msg)
+        out.append(_api_message(resolved))
+    return out
+
+
+def _assistant_tool_for_persist(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Serialize assistant/tool turns for disk (skip refs / system / user)."""
+    out: list[dict[str, Any]] = []
+    for msg in messages:
+        role = str(msg.get("role", ""))
+        if role not in {"assistant", "tool"}:
+            continue
         entry: dict[str, Any] = {
-            "role": msg.get("role", ""),
-            "raw": str(msg.get("raw") or ""),
-            "content": str(msg.get("content") or ""),
+            "role": role,
+            "content": str(msg.get("content", "")),
         }
         if msg.get("name") is not None:
             entry["name"] = msg["name"]
         if msg.get("tool_call_id") is not None:
             entry["tool_call_id"] = msg["tool_call_id"]
         for key, value in msg.items():
-            if key in {"role", "raw", "content", "name", "tool_call_id"}:
+            if key in {"role", "content", "name", "tool_call_id", "ref"}:
                 continue
             entry[key] = value
         out.append(entry)
@@ -345,8 +320,8 @@ def _persist_messages(state: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _new_text_message(role: str, text: str, **extra: Any) -> dict[str, Any]:
-    """Create a message with raw == content."""
-    entry: dict[str, Any] = {"role": role, "raw": text, "content": text}
+    """Create a concrete text message."""
+    entry: dict[str, Any] = {"role": role, "content": text}
     entry.update(extra)
     return entry
 
@@ -437,11 +412,6 @@ def _execute_with_retry(
 def _build_graph(config: Config, registry: HookRegistry):
     def handle_request(state: AgentState) -> AgentState:
         working = _copy_state(state)
-        body, system_messages = _peel_system_messages(
-            working["messages"], working["system_messages"]
-        )
-        working["messages"] = body
-        working["system_messages"] = system_messages
         working["skills_enabled"] = _seed_skills_enabled(config, registry)
         working["mentions"] = _parse_mentions(working["messages"])
         updated = _state_update(registry.run("handle_request", _hook_ctx(working, config)))
@@ -665,19 +635,23 @@ def run(
     *,
     registry: HookRegistry | None = None,
 ) -> tuple[Request, list[Message]]:
-    """Run LLM ↔ tools loop; return full transcript and messages appended this run.
+    """Run LLM ↔ tools loop; return session messages with LLM/tool turns appended.
 
-    No disk I/O — callers (CLI) persist session artifacts.
+    Keeps session ``request.toml`` messages (including ``ref``) intact; only
+    assistant/tool turns from this run are appended. ``message_lib`` refs are
+    resolved after ``before_llm`` for the API only. No disk I/O.
     """
     reg = registry if registry is not None else HookRegistry()
     graph = _build_graph(config, reg)
 
+    session_base = request.session_messages()
     messages = _messages_to_dicts(request.messages)
-    body, _ = _peel_system_messages(messages, [])
-    base_body_len = len(body)
+    base_len = len(messages)
     initial: AgentState = {
         "messages": messages,
-        "system_messages": [],
+        "message_lib": _copy_message_lib(
+            config.raw.get("message_lib") if isinstance(config.raw, dict) else None
+        ),
         "skills_enabled": [],
         "mentions": [],
         "iteration": 0,
@@ -688,13 +662,15 @@ def run(
         result = graph.invoke(initial)
         ctx = reg.run("on_result", _hook_ctx(result, config))
         final = _state_update(ctx)
-        # Persist content (+ raw when it differs) and injected tool pairs
-        messages = _persist_messages(final)
     except Exception as exc:
         err_ctx = _hook_ctx(
             {
                 "messages": messages,
-                "system_messages": [],
+                "message_lib": _copy_message_lib(
+                    config.raw.get("message_lib")
+                    if isinstance(config.raw, dict)
+                    else None
+                ),
                 "skills_enabled": [],
                 "mentions": [],
                 "iteration": 0,
@@ -710,13 +686,9 @@ def run(
             pass
         raise
 
-    request.messages = [Message.from_dict(m) for m in messages]
-    new_body = (final.get("messages") or [])[base_body_len:]
-    diff_payload = _persist_messages(
-        {
-            "messages": new_body,
-            "system_messages": [],
-        }
-    )
-    appended = [Message.from_dict(m) for m in diff_payload]
+    new_msgs = (final.get("messages") or [])[base_len:]
+    appended = [
+        Message.from_dict(m) for m in _assistant_tool_for_persist(new_msgs)
+    ]
+    request.messages = session_base + appended
     return request, appended

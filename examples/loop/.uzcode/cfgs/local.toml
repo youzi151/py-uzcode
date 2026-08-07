@@ -1,3 +1,11 @@
+[message_lib.__system]
+role = "system"
+content = "You are a coding agent. Be concise and helpful."
+
+[message_lib.__skill]
+role = "system"
+content = ""
+
 [tools.edit_file]
 enable = false
 

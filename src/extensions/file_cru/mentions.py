@@ -117,7 +117,6 @@ def _synthetic_tool_pair(
     return [
         {
             "role": "assistant",
-            "raw": "",
             "content": "",
             "tool_calls": [
                 {
@@ -133,7 +132,6 @@ def _synthetic_tool_pair(
         {
             "role": "tool",
             "tool_call_id": call_id,
-            "raw": content,
             "content": content,
         },
     ]

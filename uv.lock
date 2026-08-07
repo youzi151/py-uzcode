@@ -1642,8 +1642,8 @@ wheels = [
 
 [[package]]
 name = "overdict"
-version = "0.1.0"
-source = { git = "https://github.com/youzi151/py-overdict#30c061bebe286d8872c735f488771a1e571f89bd" }
+version = "0.2.0"
+source = { git = "https://github.com/youzi151/py-overdict#a23c77f6154f803125494beb4c24e611a4913684" }
 
 [[package]]
 name = "packaging"

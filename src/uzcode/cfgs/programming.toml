@@ -25,7 +25,7 @@ permission = "approve"
 [extension]
 enable = ["file_cru", "task_summary"]
 [extension.__merge]
-enable = "concat"
+enable = "after"
 
 [exts.task_summary]
 auto_open = true
@@ -39,3 +39,8 @@ logging = 100
 
 [extension.order.before_tool]
 file_cru = 50
+
+[message_lib.__system]
+content = "You are a coding agent. Be concise and helpful."
+[message_lib.__system.__merge]
+content = "replace"

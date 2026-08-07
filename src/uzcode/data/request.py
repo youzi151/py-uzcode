@@ -1,4 +1,4 @@
-"""Load and write request TOML (``[request]`` section only on disk)."""
+"""Load and write session request TOML (full file on write-back)."""
 
 from __future__ import annotations
 
@@ -14,40 +14,33 @@ from dataclasses import dataclass, field
 class Message:
     """In-memory message.
 
-    ``content`` is what goes to the LLM (may be mention-expanded).
-    ``raw`` is the original text. When they differ, both are kept and
-    written to TOML; when equal, only ``content`` is persisted.
+    ``content`` is the message text (authored, LLM, or tool result).
+    ``ref`` names an entry in ``message_lib`` (blueprint); own fields override.
     """
 
-    role: str
-    content: str
-    raw: str = ""
+    role: str = ""
+    content: str = ""
+    ref: str | None = None
     name: str | None = None
     tool_call_id: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Message:
-        known = {"role", "content", "raw", "name", "tool_call_id"}
+        known = {"role", "content", "ref", "name", "tool_call_id"}
         extra = {k: v for k, v in data.items() if k not in known}
         content_val = data.get("content")
-        raw_val = data.get("raw")
-        if content_val is None and raw_val is None:
+        
+        if content_val is None:
             content = ""
-            raw = ""
-        elif content_val is None:
-            content = str(raw_val)
-            raw = content
-        elif raw_val is None:
-            content = str(content_val)
-            raw = content
         else:
             content = str(content_val)
-            raw = str(raw_val)
+        ref_val = data.get("ref")
+        ref = str(ref_val) if ref_val is not None and str(ref_val) != "" else None
         return cls(
-            role=data["role"],
+            role=str(data.get("role") or ""),
             content=content,
-            raw=raw,
+            ref=ref,
             name=data.get("name"),
             tool_call_id=data.get("tool_call_id"),
             extra=extra,
@@ -74,21 +67,31 @@ def persist_session(
     *,
     stamp: str,
 ) -> None:
-    """Write ``diffs/<stamp>.toml`` and overwrite session ``request.toml``."""
+    """Write ``diffs/<stamp>.toml`` and overwrite session ``request.toml``.
+
+    Session file keeps authored refs / messages / message_lib; only LLM
+    assistant/tool turns are appended under ``[request].messages``.
+    """
     session_dir = Path(session_dir).resolve()
     request.write(
         session_dir / "diffs" / f"{stamp}.toml",
         messages=appended,
-        messages_only=True,
+        diff=True,
     )
     request.write(session_dir / "request.toml")
 
 
 def _message_to_toml(msg: Message) -> dict[str, Any]:
-    entry: dict[str, Any] = {"role": msg.role}
-    if msg.raw != msg.content:
-        entry["raw"] = msg.raw
-    entry["content"] = msg.content
+    entry: dict[str, Any] = {}
+    if msg.ref is not None:
+        entry["ref"] = msg.ref
+        if msg.role:
+            entry["role"] = msg.role
+        if msg.content:
+            entry["content"] = msg.content
+    else:
+        entry["role"] = msg.role
+        entry["content"] = msg.content
     if msg.name is not None:
         entry["name"] = msg.name
     if msg.tool_call_id is not None:
@@ -99,12 +102,13 @@ def _message_to_toml(msg: Message) -> dict[str, Any]:
 
 @dataclass
 class Request:
-    """A single agent request (``[request]`` in session ``request.toml``)."""
+    """Runtime request plus session file snapshot for write-back."""
 
     path: Path
     work_dir: Path
     messages: list[Message] = field(default_factory=list)
     raw: dict[str, Any] = field(default_factory=dict)
+    session_doc: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(
@@ -112,28 +116,39 @@ class Request:
         path: str | Path,
         work_dir: str | Path,
         data: dict[str, Any],
+        *,
+        session_doc: dict[str, Any] | None = None,
     ) -> Request:
         path = Path(path)
         work_dir = Path(work_dir).resolve()
         messages = [Message.from_dict(m) for m in data.get("messages", [])]
+        doc = dict(session_doc) if session_doc is not None else {}
         return cls(
             path=path,
             work_dir=work_dir,
             messages=messages,
             raw=data,
+            session_doc=doc,
         )
+
+    def session_messages(self) -> list[Message]:
+        """Messages authored in the session file (write-back base)."""
+        req = self.session_doc.get("request")
+        if not isinstance(req, dict):
+            return []
+        return [Message.from_dict(m) for m in req.get("messages", [])]
 
     def write(
         self,
         path: str | Path | None = None,
         *,
         messages: list[Message] | None = None,
-        messages_only: bool = False,
+        diff: bool = False,
     ) -> None:
-        """Write request-only TOML under ``[request]``.
+        """Write session TOML.
 
-        ``messages`` defaults to ``self.messages``. When ``messages_only`` is
-        true, only ``messages`` are written (no other ``raw`` keys).
+        Full write: entire ``session_doc`` with ``[request].messages`` updated.
+        Diff write: only ``[request].messages`` (appended turns).
         """
         out = Path(path or self.path)
         if not out.is_absolute():
@@ -144,13 +159,15 @@ class Request:
         to_write = self.messages if messages is None else messages
         serialized = [_message_to_toml(msg) for msg in to_write]
 
-        if messages_only:
-            body: dict[str, Any] = {"messages": serialized}
+        if diff:
+            payload: dict[str, Any] = {"request": {"messages": serialized}}
         else:
-            body = dict(self.raw)
-            body["messages"] = serialized
+            payload = dict(self.session_doc)
+            req_body = dict(payload.get("request") or {})
+            req_body["messages"] = serialized
+            payload["request"] = req_body
 
-        text = tomli_w.dumps({"request": body}).rstrip() + "\n"
+        text = tomli_w.dumps(payload).rstrip() + "\n"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(text, encoding="utf-8")
         self.path = out

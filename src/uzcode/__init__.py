@@ -32,9 +32,10 @@ class CodingAgent:
         config: Config,
         request: Request,
     ) -> tuple[Request, list[Message]]:
-        """Run the agent loop. Returns full transcript and messages appended this run.
+        """Run the agent loop. Returns session messages with this run's turns appended.
 
         Does not write session files — callers persist (CLI does reqbak/diffs/request.toml).
+        Session refs/messages are preserved; only assistant/tool turns are appended.
         """
         registry = load_extensions(self.work_dir, config)
         return engine.run(config, request, registry=registry)

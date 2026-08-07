@@ -3,6 +3,14 @@ base_url = "http://127.0.0.1:8081/v1"
 api_key = "1"
 model = "1"
 
+[message_lib.__system]
+role = "system"
+content = "You are a coding agent. Be concise and helpful."
+
+[message_lib.__skill]
+role = "system"
+content = ""
+
 [loop]
 auto_loop = true
 max_iterations = 20

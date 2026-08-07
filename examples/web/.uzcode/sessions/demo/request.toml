@@ -1,6 +1,8 @@
 [[request.messages]]
-role = "system"
-content = "You are a intelligence agent."
+ref = "__system"
+
+[[request.messages]]
+ref = "__skill"
 
 [[request.messages]]
 role = "user"

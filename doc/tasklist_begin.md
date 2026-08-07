@@ -81,8 +81,8 @@
 **權威**：[plan_feature_skill.md](./plan_feature_skill.md)。完成標準見該文件 §9。
 
 - [x] 核心：`SkillRegistry`／`registry.skill(...)`；合規發現 `.uzcode/skills/**/SKILL.md`（目錄名 = `name`）
-- [x] 引擎：`handle_request`（一次）→ `before_llm` → …；`AgentState.skills_enabled`（引擎依 cfg 種子）／`system_messages`（exts 追加；`call_llm` 合併成單一 system）
-- [x] 內建 ext `skills`：載入檔案 skills；`before_llm` 將目錄 append 到 `system_messages`（標記 `<!-- uzcode:skills-catalog -->`）；`read_skill`／`read_file_in_skill`（依 `skills_enabled`）
+- [x] 引擎：`handle_request`（一次）→ `before_llm` → …；`AgentState.skills_enabled`／`message_lib`（`ref` 於 `call_llm` resolve）
+- [x] 內建 ext `skills`：載入檔案 skills；`before_llm` 寫入 `message_lib.__skill`（標記 `<!-- uzcode:skills-catalog -->`）；`read_skill`／`read_file_in_skill`（依 `skills_enabled`）
 - [x] 內建 ext `shell`：`sh` tool（cwd = `work_dir`）
 - [x] cfg：`[skills] enable`（省略 = 全部；`[]` = 空；白名單）；`extension.enable` 含 `"skills"`／`"shell"`
 - [x] 其他 ext：可於 `handle_request` 突變 `state["skills_enabled"]`（例如 ban）；可 `registry.skill(...)` 程式註冊
@@ -95,9 +95,9 @@
 
 ## Phase 6 — Mention
 
-**完成標準**：引擎解析 `@{cmd:text}` → `mentions`；`file_cru`／`skills` 設 `replacement` 或預載 tools；展開後的 `content` 送 LLM；寫回 TOML 只含原始 `content`（`raw` 僅 runtime）。
+**完成標準**：引擎解析 `@{cmd:text}` → `mentions`；`file_cru`／`skills` 設 `replacement` 或預載 tools；展開後的 `content` 送 LLM；寫回 session 保留原稿 `content`（只 append assistant／tool）。
 
-- [x] 引擎：`@{cmd:text}` 解析、`AgentState.mentions`、runtime `raw`/`content`、套用 `replacement`
+- [x] 引擎：`@{cmd:text}` 解析、`AgentState.mentions`、`content` 展開、套用 `replacement`
 - [x] `file_cru`：`file`／`folder`／`file!`／`folder!`
 - [x] `skills`：`skill`／`skill!`
 - [x] 對象不存在時 `Continue? (y/N)`；刪除獨立 `mention` ext

@@ -197,13 +197,20 @@ def prepare(
     if not cfg_dicts:
         raise ValueError("cfg layers must not be empty after expand")
 
+    session_doc = load_toml(request_path)
+
     merged = dict(merge(*cfg_dicts))
     req_raw = merged.pop("request", None)
     if not isinstance(req_raw, dict):
         req_raw = {}
 
     config = Config.from_dict(work_dir, merged)
-    request = Request.from_dict(request_path, work_dir, req_raw)
+    request = Request.from_dict(
+        request_path,
+        work_dir,
+        req_raw,
+        session_doc=session_doc,
+    )
     meta = PrepareMeta(
         session_dir=session_dir,
         request_path=request_path,

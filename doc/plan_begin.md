@@ -158,7 +158,7 @@ src/extensions/             # 內建 extension（隨套件）
 
 **專項計畫（權威）**：[plan_feature_skill.md](./plan_feature_skill.md)（Agent Skills 合規套件 + 漸進載入）。若與本節舊述衝突，以專項為準。
 
-兩條來源匯入同一 runtime skill 表；目錄（name + description）經 `system_messages` 注入，全文／附屬檔按需經 tools 載入：
+兩條來源匯入同一 runtime skill 表；目錄（name + description）經 `message_lib.__skill` 注入（request 以 `ref = "__skill"` 定位），全文／附屬檔按需經 tools 載入：
 
 1. **檔案**：`{work_dir}/.uzcode/skills/**/SKILL.md`（目錄名 = frontmatter `name`）
 2. **程式**：extension `registry.skill(...)`，執行期加入，**不**寫入 skills 目錄
@@ -168,8 +168,8 @@ src/extensions/             # 內建 extension（隨套件）
 
 | 欄位／節點                        | 職責                                                                                                             |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `handle_request`（一次）         | 引擎：req `system` → `system_messages`；依 `[skills].enable` 注入 `skills_enabled`；再跑 ext hooks（可改變 `skills_enabled`） |
-| `system_messages: list[str]` | exts 只 append；`call_llm` 合併成單一 `role=system` 再送 API；寫回 req 亦用合併結果                                              |
+| `handle_request`（一次）         | 引擎：注入 `skills_enabled`；保留 raw `messages`（含 `ref`）與 `message_lib`；再跑 ext hooks |
+| `message_lib` + `ref`          | cfg／request 同格式；`before_llm` 後 resolve（lib 先、自身欄位覆寫）；skills 寫入 `__skill`；不寫回 runtime 展開結果 |
 | `skills_enabled: list[str]`  | 可見 skill 名稱；目錄與 `read_*` 皆以此為準                                                                                 |
 
 
@@ -180,8 +180,8 @@ src/extensions/             # 內建 extension（隨套件）
 
 | 層               | 職責                                                                                                                                |
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| 核心（薄）           | `SkillRegistry`／`discover`；`registry.skill(...)`；注入 `skills_enabled`；合併 `system_messages`                                         |
-| 內建 ext `skills` | 載入檔案 skills；註冊 `read_skill`／`read_file_in_skill`；`before_llm` 將目錄 append 到 `system_messages`（標記 `<!-- uzcode:skills-catalog -->`） |
+| 核心（薄）           | `SkillRegistry`／`discover`；`registry.skill(...)`；注入 `skills_enabled`；`message_lib` + `ref` resolve                                         |
+| 內建 ext `skills` | 載入檔案 skills；註冊 `read_skill`／`read_file_in_skill`；`before_llm` 寫入 `message_lib.__skill`（標記 `<!-- uzcode:skills-catalog -->`） |
 | 內建 ext `shell`  | 註冊 `sh`                                                                                                                           |
 | 其他 ext          | `registry.skill(...)`；於 `handle_request` 改變 `skills_enabled`                                                                      |
 
@@ -202,7 +202,7 @@ enable = ["logging", "file_cru", "skills", "shell"]
 
 ### Phase 6 — Mention
 
-引擎在 `handle_request` **解析** `@{cmd:text}` → `AgentState.mentions`；ext 以 **exact `cmd` match** 處理並設 `mention.replacement`／預載 tools；引擎再把 `replacement` 套到 `message.content`。TOML 只存 `content`（`raw` 僅 runtime）。
+引擎在 `handle_request` **解析** `@{cmd:text}` → `AgentState.mentions`；ext 以 **exact `cmd` match** 處理並設 `mention.replacement`／預載 tools；引擎再把 `replacement` 套到工作副本的 `message.content`。Session 寫回保留原稿 `content`（含 `@{...}`），只 append assistant／tool。
 
 | 語法 | ext | 行為 |
 | --- | --- | --- |
@@ -211,11 +211,11 @@ enable = ["logging", "file_cru", "skills", "shell"]
 | `@{skill:name}` | `skills` | `[skill: name]` or `[skill: name | desc: …]` (desc only if under 50 chars) |
 | `@{skill!:name}` | `skills` | same index + precall `read_skill` |
 
-- Message：`content`（TOML／送 LLM）；runtime `raw` = 原始（含 `@{...}`），寫回前還原進 `content`
-- Mention 欄位：`{cmd, text, handled, raw, msg_index, replacement}`
+- Message：`content` only（TOML 與 LLM）；mention 展開只改 runtime 工作副本，不覆寫 session 原稿
+- Mention 欄位：`{cmd, text, handled, raw, msg_index, replacement}`（此處 `raw` = `@{...}` 原文片段）
 - 對象不存在時 `Continue? (y/N)`（空／`n` = 中止）
 
-**完成標準**：req 含上述 mention 時，送入 LLM 前 `content` 已展開或 tool result 已預載；寫回 TOML 的 `content` 仍為原始（含 `@{...}`）。
+**完成標準**：req 含上述 mention 時，送入 LLM 前工作副本 `content` 已展開或 tool result 已預載；寫回 session 的 `content` 仍為原稿（含 `@{...}`）。
 
 ### Phase 7 — Web Search/Fetch
 

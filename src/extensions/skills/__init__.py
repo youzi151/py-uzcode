@@ -1,4 +1,4 @@
-"""Built-in skills extension — catalog via system_messages + read tools."""
+"""Built-in skills extension — catalog via message_lib.__skill + read tools."""
 
 from __future__ import annotations
 
@@ -57,8 +57,11 @@ def _build_catalog_block(skills: list) -> str:
     return "\n".join(lines)
 
 
-def _system_messages_have_catalog(system_messages: list[str]) -> bool:
-    return any(CATALOG_MARKER in str(part) for part in system_messages)
+def _skill_lib_has_catalog(message_lib: dict[str, Any]) -> bool:
+    entry = message_lib.get("__skill")
+    if not isinstance(entry, dict):
+        return False
+    return CATALOG_MARKER in str(entry.get("content") or "")
 
 
 def register(registry, config) -> None:
@@ -87,7 +90,7 @@ def register(registry, config) -> None:
         "read_file_in_skill",
         description=(
             "Read a file under an enabled skill root; returns content and "
-            "workdir_relative_path for use with sh"
+            "workdir_relative_path for use with sh; must confirm file exists"
         ),
         parameters=_READ_FILE_PARAMS,
         handler=handlers.make_read_file_in_skill(registry.skills),
@@ -95,8 +98,8 @@ def register(registry, config) -> None:
 
     def before_llm(ctx: dict[str, Any]) -> dict[str, Any]:
         state = ctx.setdefault("state", {})
-        system_messages = list(state.get("system_messages") or [])
-        if _system_messages_have_catalog(system_messages):
+        message_lib = dict(state.get("message_lib") or {})
+        if _skill_lib_has_catalog(message_lib):
             return ctx
 
         enabled_names = [str(n) for n in (state.get("skills_enabled") or [])]
@@ -106,8 +109,12 @@ def register(registry, config) -> None:
             if skill is not None:
                 skills.append(skill)
 
-        system_messages.append(_build_catalog_block(skills))
-        state["system_messages"] = system_messages
+        prev = message_lib.get("__skill")
+        entry = dict(prev) if isinstance(prev, dict) else {}
+        entry["role"] = str(entry.get("role") or "system")
+        entry["content"] = _build_catalog_block(skills)
+        message_lib["__skill"] = entry
+        state["message_lib"] = message_lib
         return ctx
 
     def handle_request(ctx: dict[str, Any]) -> dict[str, Any]:
