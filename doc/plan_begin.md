@@ -12,7 +12,7 @@
 
 | 原則           | 含義                                             |
 | ------------ | ---------------------------------------------- |
-| Stateless 第一 | 每次執行只依 session `request.toml`，無隱藏狀態               |
+| Stateless 第一 | 每次執行只依 session `session.toml`，無隱藏狀態               |
 | 使用者主導        | 可任意修改歷史訊息、tool results、甚至先前 AI 回應              |
 | 極簡核心         | 引擎只負責必要流程                                      |
 | 高度可擴充        | diff preview、logging、權限、多模型轉換等皆由 extension 實作 |
@@ -58,8 +58,8 @@ src/uzcode/
 │   │   └── ...
 │   └── sessions/            # 互動 session（取代 history / outbak）
 │       └── <name>/
-│           ├── request.toml
-│           ├── reqbak/
+│           ├── session.toml
+│           ├── sessionbak/
 │           └── diffs/
 └── ... (專案檔案)
 
@@ -158,7 +158,7 @@ src/extensions/             # 內建 extension（隨套件）
 
 **專項計畫（權威）**：[plan_feature_skill.md](./plan_feature_skill.md)（Agent Skills 合規套件 + 漸進載入）。若與本節舊述衝突，以專項為準。
 
-兩條來源匯入同一 runtime skill 表；目錄（name + description）經 `message_lib.__skill` 注入（request 以 `ref = "__skill"` 定位），全文／附屬檔按需經 tools 載入：
+兩條來源匯入同一 runtime skill 表；目錄（name + description）經 `messagelib.__skill` 注入（request 以 `ref = "__skill"` 定位），全文／附屬檔按需經 tools 載入：
 
 1. **檔案**：`{work_dir}/.uzcode/skills/**/SKILL.md`（目錄名 = frontmatter `name`）
 2. **程式**：extension `registry.skill(...)`，執行期加入，**不**寫入 skills 目錄
@@ -168,8 +168,8 @@ src/extensions/             # 內建 extension（隨套件）
 
 | 欄位／節點                        | 職責                                                                                                             |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `handle_request`（一次）         | 引擎：注入 `skills_enabled`；保留 raw `messages`（含 `ref`）與 `message_lib`；再跑 ext hooks |
-| `message_lib` + `ref`          | cfg／request 同格式；`before_llm` 後 resolve（lib 先、自身欄位覆寫）；skills 寫入 `__skill`；不寫回 runtime 展開結果 |
+| `handle_request`（一次）         | 引擎：注入 `skills_enabled`；保留 raw `messages`（含 `ref`）與 `messagelib`；再跑 ext hooks |
+| `messagelib` + `ref`          | cfg／request 同格式；`before_llm` 後 resolve（lib 先、自身欄位覆寫）；skills 寫入 `__skill`；不寫回 runtime 展開結果 |
 | `skills_enabled: list[str]`  | 可見 skill 名稱；目錄與 `read_*` 皆以此為準                                                                                 |
 
 
@@ -180,8 +180,8 @@ src/extensions/             # 內建 extension（隨套件）
 
 | 層               | 職責                                                                                                                                |
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| 核心（薄）           | `SkillRegistry`／`discover`；`registry.skill(...)`；注入 `skills_enabled`；`message_lib` + `ref` resolve                                         |
-| 內建 ext `skills` | 載入檔案 skills；註冊 `read_skill`／`read_file_in_skill`；`before_llm` 寫入 `message_lib.__skill`（標記 `<!-- uzcode:skills-catalog -->`） |
+| 核心（薄）           | `SkillRegistry`／`discover`；`registry.skill(...)`；注入 `skills_enabled`；`messagelib` + `ref` resolve                                         |
+| 內建 ext `skills` | 載入檔案 skills；註冊 `read_skill`／`read_file_in_skill`；`before_llm` 寫入 `messagelib.__skill`（標記 `<!-- uzcode:skills-catalog -->`） |
 | 內建 ext `shell`  | 註冊 `sh`                                                                                                                           |
 | 其他 ext          | `registry.skill(...)`；於 `handle_request` 改變 `skills_enabled`                                                                      |
 
@@ -277,7 +277,7 @@ permission = "approve"
 
 ### Phase 8 — Sessions（取代 History / outbak）
 
-CLI 改為 session-only：`--workdir` + `--cfg` + `--session`。`cfg.prepare`（經 `CodingAgent.prepare`）將 session `request.toml` 當最後一層 cfg merge；Engine 只回傳 in-memory transcript；CLI 負責 `reqbak/`、`diffs/`、覆寫 `request.toml`。
+CLI 改為 session-only：`--workdir` + `--cfg` + `--session`。`cfg.prepare`（經 `CodingAgent.prepare`）將 session `session.toml` 當最後一層 cfg merge；Engine 只回傳 in-memory transcript；CLI 負責 `sessionbak/`、`diffs/`、覆寫 `session.toml`。
 
 **完成標準**：`uzcode --workdir . --cfg @dev --session demo` 可載入並寫回 session 目錄。
 
@@ -352,7 +352,7 @@ logging = 100
 file_cru = 50
 ```
 
-### 4.2 Session `request.toml`（草圖）
+### 4.2 Session `session.toml`（草圖）
 
 ```toml
 [[messages]]
@@ -394,8 +394,8 @@ uzcode --workdir ./myproject --cfg @dev --session sfeature_aaa
 
 ## 7. 驗收標準（整體）
 
-1. 一次 CLI 執行：載入 session `request.toml` → LLM + tools 迴圈 → 寫回 session（reqbak / diffs / request.toml）
-2. 使用者可手改 `request.toml` 後直接 replay / fork
+1. 一次 CLI 執行：載入 session `session.toml` → LLM + tools 迴圈 → 寫回 session（sessionbak / diffs / session.toml）
+2. 使用者可手改 `session.toml` 後直接 replay / fork
 3. extension 可攔截寫檔類 tool，實作 confirm / preview，無需改引擎
 4. 工作目錄無未確認變更、無自動 git 副作用
 

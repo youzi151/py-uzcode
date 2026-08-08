@@ -4,7 +4,7 @@
 
 ## 設計理念
 
-- **Stateless 第一**：每次執行都基於完整的 `request.toml`，無隱藏狀態。
+- **Stateless 第一**：每次執行都基於完整的 `session.toml`，無隱藏狀態。
 - **使用者主導**：使用者可以任意修改歷史訊息、tool results、甚至 AI 之前的回應。
 - **極簡核心**：骨幹保持最小，只負責必要流程。
 - **高度可擴充**：所有進階行為（diff preview、logging、權限、多模型轉換等）都透過 extension 實現。
@@ -30,8 +30,8 @@
 │   │   └── ...
 │   └── sessions/            # 互動紀錄（session）
 │       └── <name>/
-│           ├── request.toml # 完整 transcript（使用者可手改）
-│           ├── reqbak/      # 每次執行前的 request 備份
+│           ├── session.toml # 完整 transcript（使用者可手改）
+│           ├── sessionbak/      # 每次執行前的 request 備份
 │           └── diffs/       # 每次執行新增的 messages
 └── ... (你的專案檔案)
 ```
@@ -45,9 +45,9 @@
 - Extension 載入順序與設定
 - 可含 `[request]`：與其他層一樣經 overdict merge（常用于注入 prompt／messages）
 
-### 2. Session (` .uzcode/sessions/<name>/request.toml`)
+### 2. Session (` .uzcode/sessions/<name>/session.toml`)
 - 作為 **最後一層 cfg** 參與 merge（與一般 `--cfg` 檔相同）
-- 存放 durable transcript；執行前 `reqbak/`，執行後覆寫並寫入 `diffs/`
+- 存放 durable transcript；執行前 `sessionbak/`，執行後覆寫並寫入 `diffs/`
 - 使用者可手改後再跑，做 replay / fork
 
 ### 3. Extension 系統
@@ -79,7 +79,7 @@
 4. 處理 tool calls（尊重 config 權限）
 5. 如啟用 auto_loop 則繼續直到無 tool calls
 6. After extension
-7. 寫回 session：`reqbak/` + `diffs/` + 覆寫 `request.toml`
+7. 寫回 session：`sessionbak/` + `diffs/` + 覆寫 `session.toml`
 
 ### 6. Tools（基礎集合）
 - `read_file` / `write_file` / `edit_file` / `list_dir` / `grep`
@@ -109,7 +109,7 @@ from uzcode import CodingAgent
 agent = CodingAgent(work_dir="./myproject")
 # config, request, meta = agent.prepare(["@dev"], "sfeature_aaa")
 # request, appended = agent.run(config, request)
-# CLI persists session files (reqbak / diffs / request.toml)
+# CLI persists session files (sessionbak / diffs / session.toml)
 ```
 
 ## 未來擴充方向

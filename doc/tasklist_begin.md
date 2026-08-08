@@ -81,8 +81,8 @@
 **權威**：[plan_feature_skill.md](./plan_feature_skill.md)。完成標準見該文件 §9。
 
 - [x] 核心：`SkillRegistry`／`registry.skill(...)`；合規發現 `.uzcode/skills/**/SKILL.md`（目錄名 = `name`）
-- [x] 引擎：`handle_request`（一次）→ `before_llm` → …；`AgentState.skills_enabled`／`message_lib`（`ref` 於 `call_llm` resolve）
-- [x] 內建 ext `skills`：載入檔案 skills；`before_llm` 寫入 `message_lib.__skill`（標記 `<!-- uzcode:skills-catalog -->`）；`read_skill`／`read_file_in_skill`（依 `skills_enabled`）
+- [x] 引擎：`handle_request`（一次）→ `before_llm` → …；`AgentState.skills_enabled`／`messagelib`（`ref` 於 `call_llm` resolve）
+- [x] 內建 ext `skills`：載入檔案 skills；`before_llm` 寫入 `messagelib.__skill`（標記 `<!-- uzcode:skills-catalog -->`）；`read_skill`／`read_file_in_skill`（依 `skills_enabled`）
 - [x] 內建 ext `shell`：`sh` tool（cwd = `work_dir`）
 - [x] cfg：`[skills] enable`（省略 = 全部；`[]` = 空；白名單）；`extension.enable` 含 `"skills"`／`"shell"`
 - [x] 其他 ext：可於 `handle_request` 突變 `state["skills_enabled"]`（例如 ban）；可 `registry.skill(...)` 程式註冊
@@ -124,13 +124,13 @@ Mention：`@{search|fetch[:!]:text}`（引擎解析；`web` ext exact `cmd`）�
 
 ## Phase 8 — Sessions（取代 History / outbak）
 
-**完成標準**：`--session` 必填；每次執行寫入 `reqbak/` + `diffs/` 並覆寫 `request.toml`。
+**完成標準**：`--session` 必填；每次執行寫入 `sessionbak/` + `diffs/` 並覆寫 `session.toml`。
 
 - [x] CLI：`--workdir` / `--cfg` / `--session`（移除 `--out` / `--full` / `--diff`）
 - [x] Engine：純 in-memory（config + request → transcript + appended）
-- [x] CodingAgent.prepare → `cfg.prepare`（session `request.toml` 作最後一層 merge）
-- [x] CLI：parse + reqbak + run + persist（diffs / request.toml）
-- [x] 範例改為 `.uzcode/sessions/demo/request.toml`
+- [x] CodingAgent.prepare → `cfg.prepare`（session `session.toml` 作最後一層 merge）
+- [x] CLI：parse + sessionbak + run + persist（diffs / session.toml）
+- [x] 範例改為 `.uzcode/sessions/demo/session.toml`
 
 ---
 
@@ -158,8 +158,8 @@ Mention：`@{search|fetch[:!]:text}`（引擎解析；`web` ext exact `cmd`）�
 
 ## 整體驗收（全部 Phase 完成後勾選）
 
-- [ ] 一次 CLI：載入 session `request.toml` → LLM + tools 迴圈 → 寫回 session
-- [ ] 手改 `request.toml` 後可直接 replay / fork
+- [ ] 一次 CLI：載入 session `session.toml` → LLM + tools 迴圈 → 寫回 session
+- [ ] 手改 `session.toml` 後可直接 replay / fork
 - [ ] extension 可攔截寫檔類 tool（confirm / preview），無需改引擎
 - [ ] 工作目錄無未確認變更、無自動 git 副作用
 

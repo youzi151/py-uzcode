@@ -37,7 +37,7 @@ class AgentState(TypedDict):
     """LangGraph node I/O. Ext scratch lives in ``extra``."""
 
     messages: list[dict[str, Any]]
-    message_lib: dict[str, dict[str, Any]]
+    messagelib: dict[str, dict[str, Any]]
     skills_enabled: list[str]
     mentions: list[dict[str, Any]]
     iteration: int
@@ -68,7 +68,7 @@ def _copy_mentions(mentions: list[Any] | None) -> list[dict[str, Any]]:
     return out
 
 
-def _copy_message_lib(lib: Any) -> dict[str, dict[str, Any]]:
+def _copy_messagelib(lib: Any) -> dict[str, dict[str, Any]]:
     if not isinstance(lib, dict):
         return {}
     out: dict[str, dict[str, Any]] = {}
@@ -81,7 +81,7 @@ def _copy_message_lib(lib: Any) -> dict[str, dict[str, Any]]:
 def _copy_state(state: dict[str, Any]) -> AgentState:
     return {
         "messages": [dict(m) for m in (state.get("messages") or [])],
-        "message_lib": _copy_message_lib(state.get("message_lib")),
+        "messagelib": _copy_messagelib(state.get("messagelib")),
         "skills_enabled": list(state.get("skills_enabled") or []),
         "mentions": _copy_mentions(state.get("mentions")),
         "iteration": int(state.get("iteration", 0)),
@@ -118,7 +118,7 @@ def _state_update(ctx: dict[str, Any]) -> AgentState:
         raise TypeError("state.mentions must be a list")
     return {
         "messages": [dict(m) for m in (state.get("messages") or [])],
-        "message_lib": _copy_message_lib(state.get("message_lib")),
+        "messagelib": _copy_messagelib(state.get("messagelib")),
         "skills_enabled": [str(n) for n in (skills_enabled or [])],
         "mentions": _copy_mentions(mentions),
         "iteration": int(state.get("iteration", 0)),
@@ -261,19 +261,19 @@ def _api_message(msg: dict[str, Any]) -> dict[str, Any]:
 
 def _resolve_message(
     msg: dict[str, Any],
-    message_lib: dict[str, dict[str, Any]],
+    messagelib: dict[str, dict[str, Any]],
 ) -> dict[str, Any] | None:
-    """Resolve ``ref``: extend from message_lib, then apply own fields."""
+    """Resolve ``ref``: extend from messagelib, then apply own fields."""
 
     ref = msg.get("ref")
     if ref is None or str(ref) == "":
         resolved = {k: v for k, v in msg.items() if k != "ref"}
         return resolved
 
-    base = message_lib.get(ref)
+    base = messagelib.get(ref)
 
     if not isinstance(base, dict):
-        raise ValueError(f"message_lib ref {name!r} not found")
+        raise ValueError(f"messagelib ref {name!r} not found")
 
     own = {k: v for k, v in msg.items() if k != "ref"}
     resolved = {**dict(base), **own}
@@ -285,8 +285,8 @@ def _resolve_message(
 
 
 def _llm_messages(state: dict[str, Any]) -> list[dict[str, Any]]:
-    """Resolve refs against message_lib, then project to API messages (order kept)."""
-    lib = _copy_message_lib(state.get("message_lib"))
+    """Resolve refs against messagelib, then project to API messages (order kept)."""
+    lib = _copy_messagelib(state.get("messagelib"))
     out = []
     for m in (state.get("messages") or []):
         resolved = _resolve_message(m, lib)
@@ -637,8 +637,8 @@ def run(
 ) -> tuple[Request, list[Message]]:
     """Run LLM ↔ tools loop; return session messages with LLM/tool turns appended.
 
-    Keeps session ``request.toml`` messages (including ``ref``) intact; only
-    assistant/tool turns from this run are appended. ``message_lib`` refs are
+    Keeps session ``session.toml`` messages (including ``ref``) intact; only
+    assistant/tool turns from this run are appended. ``messagelib`` refs are
     resolved after ``before_llm`` for the API only. No disk I/O.
     """
     reg = registry if registry is not None else HookRegistry()
@@ -649,8 +649,8 @@ def run(
     base_len = len(messages)
     initial: AgentState = {
         "messages": messages,
-        "message_lib": _copy_message_lib(
-            config.raw.get("message_lib") if isinstance(config.raw, dict) else None
+        "messagelib": _copy_messagelib(
+            config.raw.get("messagelib") if isinstance(config.raw, dict) else None
         ),
         "skills_enabled": [],
         "mentions": [],
@@ -666,8 +666,8 @@ def run(
         err_ctx = _hook_ctx(
             {
                 "messages": messages,
-                "message_lib": _copy_message_lib(
-                    config.raw.get("message_lib")
+                "messagelib": _copy_messagelib(
+                    config.raw.get("messagelib")
                     if isinstance(config.raw, dict)
                     else None
                 ),

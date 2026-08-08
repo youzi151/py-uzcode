@@ -169,7 +169,7 @@ class PrepareMeta:
     """Metadata from cfg.prepare for CLI preview / persist."""
 
     session_dir: Path
-    request_path: Path
+    session_path: Path
     cfg_paths: list[Path]
 
 
@@ -178,42 +178,42 @@ def prepare(
     cfg_tokens: list[str],
     session: str,
 ) -> tuple[Config, Request, PrepareMeta]:
-    """Collect cfg layers with session ``request.toml`` as the last layer.
+    """Collect cfg layers with session ``session.toml`` as the last layer.
 
-    ``request.toml`` is treated as a normal cfg file (may contribute
+    ``session.toml`` is treated as a normal cfg file (may contribute
     ``[request]`` via overdict merge with earlier ``--cfg`` layers).
     """
     work_dir = Path(work_dir).resolve()
     session_dir = resolve_session_dir(work_dir, session)
-    request_path = session_dir / "request.toml"
-    if not request_path.is_file():
+    session_path = session_dir / "session.toml"
+    if not session_path.is_file():
         raise FileNotFoundError(
-            f"Session request not found: {request_path}. "
-            f"Create the file under .uzcode/sessions/<name>/request.toml"
+            f"Session file not found: {session_path}. "
+            f"Create the file under .uzcode/sessions/<name>/session.toml"
         )
 
-    tokens = list(cfg_tokens) + [str(request_path)]
+    tokens = list(cfg_tokens) + [str(session_path)]
     paths, cfg_dicts = expand_cfg_layers(work_dir, tokens)
     if not cfg_dicts:
         raise ValueError("cfg layers must not be empty after expand")
 
-    session_doc = load_toml(request_path)
+    session_doc = load_toml(session_path)
 
     merged = dict(merge(*cfg_dicts))
-    req_raw = merged.pop("request", None)
+    req_raw = merged.pop("req", None)
     if not isinstance(req_raw, dict):
         req_raw = {}
 
     config = Config.from_dict(work_dir, merged)
     request = Request.from_dict(
-        request_path,
+        session_path,
         work_dir,
         req_raw,
         session_doc=session_doc,
     )
     meta = PrepareMeta(
         session_dir=session_dir,
-        request_path=request_path,
+        session_path=session_path,
         cfg_paths=paths,
     )
     return config, request, meta

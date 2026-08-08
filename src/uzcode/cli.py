@@ -10,7 +10,7 @@ from pathlib import Path
 
 from uzcode import CodingAgent
 from uzcode.data import Config
-from uzcode.data.request import copy_request_to_reqbak, persist_session
+from uzcode.data.request import copy_session_to_sessionbak, persist_session
 
 
 def _format_config(config: Config) -> str:
@@ -80,7 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="NAME_OR_PATH",
         help=(
             "Config TOML layers in merge order (may include [request]). "
-            "Session request.toml is appended as the last layer. "
+            "session.toml from --session is appended as the last layer. "
             "Built-in name, .uzcode/cfgs/ name, or file path; .toml optional."
         ),
     )
@@ -90,7 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="NAME",
         help=(
             "Session name under {workdir}/.uzcode/sessions/<NAME>/ "
-            "(request.toml is a normal last cfg layer; updated after run)"
+            "(session.toml is a normal last cfg layer; updated after run)"
         ),
     )
     return parser
@@ -112,12 +112,12 @@ def main(argv: list[str] | None = None) -> int:
     print()
     print(f"cfg layers: {', '.join(str(p) for p in meta.cfg_paths)}")
     print(f"session: {meta.session_dir}")
-    print(f"request: {meta.request_path}")
+    print(f"session file: {meta.session_path}")
     print(f"request messages: {len(request.messages)}")
     print()
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    copy_request_to_reqbak(meta.session_dir, stamp)
+    copy_session_to_sessionbak(meta.session_dir, stamp)
 
     try:
         request, appended = agent.run(config, request)

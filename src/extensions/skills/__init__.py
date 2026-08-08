@@ -1,4 +1,4 @@
-"""Built-in skills extension — catalog via message_lib.__skill + read tools."""
+"""Built-in skills extension — catalog via messagelib.__skill + read tools."""
 
 from __future__ import annotations
 
@@ -57,8 +57,8 @@ def _build_catalog_block(skills: list) -> str:
     return "\n".join(lines)
 
 
-def _skill_lib_has_catalog(message_lib: dict[str, Any]) -> bool:
-    entry = message_lib.get("__skill")
+def _skill_lib_has_catalog(messagelib: dict[str, Any]) -> bool:
+    entry = messagelib.get("__skill")
     if not isinstance(entry, dict):
         return False
     return CATALOG_MARKER in str(entry.get("content") or "")
@@ -98,8 +98,8 @@ def register(registry, config) -> None:
 
     def before_llm(ctx: dict[str, Any]) -> dict[str, Any]:
         state = ctx.setdefault("state", {})
-        message_lib = dict(state.get("message_lib") or {})
-        if _skill_lib_has_catalog(message_lib):
+        messagelib = dict(state.get("messagelib") or {})
+        if _skill_lib_has_catalog(messagelib):
             return ctx
 
         enabled_names = [str(n) for n in (state.get("skills_enabled") or [])]
@@ -109,12 +109,12 @@ def register(registry, config) -> None:
             if skill is not None:
                 skills.append(skill)
 
-        prev = message_lib.get("__skill")
+        prev = messagelib.get("__skill")
         entry = dict(prev) if isinstance(prev, dict) else {}
         entry["role"] = str(entry.get("role") or "system")
         entry["content"] = _build_catalog_block(skills)
-        message_lib["__skill"] = entry
-        state["message_lib"] = message_lib
+        messagelib["__skill"] = entry
+        state["messagelib"] = messagelib
         return ctx
 
     def handle_request(ctx: dict[str, Any]) -> dict[str, Any]:

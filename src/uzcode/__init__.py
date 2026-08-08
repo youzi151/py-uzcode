@@ -34,7 +34,7 @@ class CodingAgent:
     ) -> tuple[Request, list[Message]]:
         """Run the agent loop. Returns session messages with this run's turns appended.
 
-        Does not write session files — callers persist (CLI does reqbak/diffs/request.toml).
+        Does not write session files — callers persist (CLI does sessionbak/diffs/session.toml).
         Session refs/messages are preserved; only assistant/tool turns are appended.
         """
         registry = load_extensions(self.work_dir, config)

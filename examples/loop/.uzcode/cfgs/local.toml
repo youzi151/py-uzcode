@@ -1,8 +1,8 @@
-[message_lib.__system]
+[messagelib.__system]
 role = "system"
 content = "You are a coding agent. Be concise and helpful."
 
-[message_lib.__skill]
+[messagelib.__skill]
 role = "system"
 content = ""
 

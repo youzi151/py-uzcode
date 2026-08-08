@@ -40,7 +40,7 @@ logging = 100
 [extension.order.before_tool]
 file_cru = 50
 
-[message_lib.__system]
+[messagelib.__system]
 content = "You are a coding agent. Be concise and helpful."
-[message_lib.__system.__merge]
+[messagelib.__system.__merge]
 content = "replace"

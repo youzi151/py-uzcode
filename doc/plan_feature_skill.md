@@ -29,7 +29,7 @@ Skills 是「可發現的任務手冊」，不是可執行外掛：標準不定�
 | Skill 不可執行 | 標準與本計畫一致：Skill 本身無 runtime；跑腳本 = 取得路徑後轉呼叫既有 `sh` |
 | 便利 tools 非規格 | `read_skill`／`read_file_in_skill` 為 uzcode 實作細節，**不**要求 skill 作者為這兩個 tool 寫特殊標記 |
 | 不落盤程式 skill | `registry.skill(...)` 僅執行期存在，不寫入 skills 目錄 |
-| Replay 友好 | 目錄進 `message_lib.__skill`；request 以 `ref = "__skill"` 定位；不展開寫回；tool results 走既有 messages |
+| Replay 友好 | 目錄進 `messagelib.__skill`；request 以 `ref = "__skill"` 定位；不展開寫回；tool results 走既有 messages |
 
 ---
 
@@ -54,7 +54,7 @@ Skills 是「可發現的任務手冊」，不是可執行外掛：標準不定�
 
 | 內容 | 落點 | 時機 | 對應標準層級 |
 |------|------|------|----------------|
-| Skill 目錄（`name` + `description` + 使用約定） | `message_lib.__skill` → resolve 成 `role=system` | 第一次 `before_llm` 寫入 | Level 1 Metadata |
+| Skill 目錄（`name` + `description` + 使用約定） | `messagelib.__skill` → resolve 成 `role=system` | 第一次 `before_llm` 寫入 | Level 1 Metadata |
 | 「相關時先載入 skill」規則 | 同上 | 與目錄一併 append | （runtime 約定） |
 | `SKILL.md` 正文 | `role=tool`（`read_skill` 的 result） | LLM 決定載入後 | Level 2 Instructions |
 | 附屬檔（`references/`／`scripts/` 原文等） | `role=tool`（`read_file_in_skill` 的 result） | 按需 | Level 3 Resources |
@@ -364,23 +364,23 @@ read_file_in_skill(...) 或已知 workdir_relative_path
 - Skill **理論上無法執行**；`scripts/*` 只是普通檔案（標準亦如此）。
 - 可選後續（非本階段必須）：薄包裝 `run_skill_script(name, script, args)`，內部仍是「校驗路徑 ∈ skill 根 → subprocess」。本階段以既有 `sh` 為準。
 
-### 5.4 目錄注入與 `message_lib.__skill`
+### 5.4 目錄注入與 `messagelib.__skill`
 
 **時機**：本 run 第一次 `before_llm`（`auto_loop` 後續輪次不重注目錄）。
 
 **流程：**
 
-1. `handle_request`：注入 `skills_enabled`；保留 raw `messages`（含 `ref`）與 `message_lib`。
-2. skills ext `before_llm`：若 `message_lib.__skill` 尚無 `<!-- uzcode:skills-catalog -->`，依 `skills_enabled` 組目錄並寫入 `message_lib.__skill`。
+1. `handle_request`：注入 `skills_enabled`；保留 raw `messages`（含 `ref`）與 `messagelib`。
+2. skills ext `before_llm`：若 `messagelib.__skill` 尚無 `<!-- uzcode:skills-catalog -->`，依 `skills_enabled` 組目錄並寫入 `messagelib.__skill`。
 3. **不**把各 skill 的 `body` 寫進目錄（對齊標準 Level 1）。
 4. Request 模板以 `ref = "__skill"` 決定目錄在 messages 中的位置；**不**與 `__system` 混拼字串。
 5. `call_llm`：對每則 message resolve（lib 先、自身欄位覆寫）後送 API。
-6. 寫回 session `request.toml`：保留原稿（含 `ref`）；只 append 本輪 assistant／tool；不寫入 runtime 展開或 catalog 內容。
+6. 寫回 session `session.toml`：保留原稿（含 `ref`）；只 append 本輪 assistant／tool；不寫入 runtime 展開或 catalog 內容。
 
 | 方案 | 做法 | 取捨 |
 |------|------|------|
 | A | 寫入前檢查 `__skill` 是否已含標記 | 同一次 run 內防重複 |
-| B（採用） | catalog 只進 runtime `message_lib`、不回寫 session | 檔案保持 `ref`；每輪由 ext 再填 `__skill` |
+| B（採用） | catalog 只進 runtime `messagelib`、不回寫 session | 檔案保持 `ref`；每輪由 ext 再填 `__skill` |
 
 ### 5.5 HookRegistry API
 
@@ -440,9 +440,9 @@ def register(registry, config) -> None:
 
 ### Step 2 — 引擎 `handle_request`／`skills_enabled`／`system_messages` + ext `skills`
 
-- [x] `handle_request` 節點；注入 `skills_enabled`；保留 `message_lib` + raw messages
+- [x] `handle_request` 節點；注入 `skills_enabled`；保留 `messagelib` + raw messages
 - [x] `call_llm` resolve `ref`（僅 API）；寫回 session 保留原稿 + append assistant／tool
-- [x] ext `skills`：discover + `read_*`；`before_llm` 寫入 `message_lib.__skill`
+- [x] ext `skills`：discover + `read_*`；`before_llm` 寫入 `messagelib.__skill`
 - [x] ext `shell`：`sh` tool
 
 ### Step 3 — Config 契約 + 範例
@@ -461,7 +461,7 @@ def register(registry, config) -> None:
 | 元件 | 關係 |
 |------|------|
 | `engine.handle_request` | 一次：peel system、注入 `skills_enabled`、跑 ext hooks |
-| `engine.before_llm` | skills ext 寫入 `message_lib.__skill` |
+| `engine.before_llm` | skills ext 寫入 `messagelib.__skill` |
 | `engine.call_llm` | resolve `ref` → API；不寫回展開結果 |
 | Tools 通道 | `read_skill`／`read_file_in_skill`／`sh` |
 | Phase 6 mentions | 引擎解析 `@{...}`；`file_cru`／`skills`／`web` 處理對應 `cmd` |
@@ -499,7 +499,7 @@ def register(registry, config) -> None:
 6. `[skills].enable` cfg注入至engine；ext 可改變 `skills_enabled`。
 7. `auto_loop` 多輪不重複 append 目錄（同 run 內標記檢查）。
 8. 關閉 `"skills"` ext 後無目錄／無 `read_*`（與未掛 skills 行為一致）。
-9. `message_lib` + `ref`：`__system`／`__skill` 等可自由排序；skills 只改 `__skill`；catalog 不寫回 session。
+9. `messagelib` + `ref`：`__system`／`__skill` 等可自由排序；skills 只改 `__skill`；catalog 不寫回 session。
 
 ---
 

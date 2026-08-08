@@ -15,7 +15,7 @@ class Message:
     """In-memory message.
 
     ``content`` is the message text (authored, LLM, or tool result).
-    ``ref`` names an entry in ``message_lib`` (blueprint); own fields override.
+    ``ref`` names an entry in ``messagelib`` (blueprint); own fields override.
     """
 
     role: str = ""
@@ -47,15 +47,15 @@ class Message:
         )
 
 
-def copy_request_to_reqbak(session_dir: str | Path, stamp: str) -> Path | None:
-    """Copy ``request.toml`` into ``reqbak/`` before a run. Returns bak path or None."""
+def copy_session_to_sessionbak(session_dir: str | Path, stamp: str) -> Path | None:
+    """Copy ``session.toml`` into ``sessionbak/`` before a run. Returns bak path or None."""
     session_dir = Path(session_dir).resolve()
-    src = session_dir / "request.toml"
+    src = session_dir / "session.toml"
     if not src.is_file():
         return None
-    bak_dir = session_dir / "reqbak"
+    bak_dir = session_dir / "sessionbak"
     bak_dir.mkdir(parents=True, exist_ok=True)
-    bak_path = bak_dir / f"request.{stamp}.toml"
+    bak_path = bak_dir / f"session.{stamp}.toml"
     shutil.copy2(src, bak_path)
     return bak_path
 
@@ -67,9 +67,9 @@ def persist_session(
     *,
     stamp: str,
 ) -> None:
-    """Write ``diffs/<stamp>.toml`` and overwrite session ``request.toml``.
+    """Write ``diffs/<stamp>.toml`` and overwrite session ``session.toml``.
 
-    Session file keeps authored refs / messages / message_lib; only LLM
+    Session file keeps authored refs / messages / messagelib; only LLM
     assistant/tool turns are appended under ``[request].messages``.
     """
     session_dir = Path(session_dir).resolve()
@@ -78,7 +78,7 @@ def persist_session(
         messages=appended,
         diff=True,
     )
-    request.write(session_dir / "request.toml")
+    request.write(session_dir / "session.toml")
 
 
 def _message_to_toml(msg: Message) -> dict[str, Any]:
@@ -133,7 +133,7 @@ class Request:
 
     def session_messages(self) -> list[Message]:
         """Messages authored in the session file (write-back base)."""
-        req = self.session_doc.get("request")
+        req = self.session_doc.get("req")
         if not isinstance(req, dict):
             return []
         return [Message.from_dict(m) for m in req.get("messages", [])]
@@ -147,8 +147,8 @@ class Request:
     ) -> None:
         """Write session TOML.
 
-        Full write: entire ``session_doc`` with ``[request].messages`` updated.
-        Diff write: only ``[request].messages`` (appended turns).
+        Full write: entire ``session_doc`` with ``[req].messages`` updated.
+        Diff write: only ``[req].messages`` (appended turns).
         """
         out = Path(path or self.path)
         if not out.is_absolute():
@@ -160,12 +160,12 @@ class Request:
         serialized = [_message_to_toml(msg) for msg in to_write]
 
         if diff:
-            payload: dict[str, Any] = {"request": {"messages": serialized}}
+            payload: dict[str, Any] = {"req": {"messages": serialized}}
         else:
             payload = dict(self.session_doc)
-            req_body = dict(payload.get("request") or {})
+            req_body = dict(payload.get("req") or {})
             req_body["messages"] = serialized
-            payload["request"] = req_body
+            payload["req"] = req_body
 
         text = tomli_w.dumps(payload).rstrip() + "\n"
         out.parent.mkdir(parents=True, exist_ok=True)
