@@ -145,11 +145,34 @@ registry.tool(
 
 Per-tool cfg (`[tools.<name>]`): `enable`, `permission`, `preview_diff`, `retry`, `on_failure`. Default permission when omitted: `ask`. Handlers must not decide permission — use cfg + `before_tool`. To end the agent loop after this turn: `ctx["state"]["stop_loop"]=True`. Cross-turn ext data: `ctx["state"]["extra"]`.
 
+## Registering actions
+
+Actions are CLI/API side-effects run **after** `prepare`, **before** an optional LLM `run`. They are not LangGraph hooks.
+
+```python
+def my_action(ctx: dict) -> dict:
+    # ctx: config, request, registry, action, appended (list)
+    request = ctx["request"]
+    # mutate request.messages; append new Message objects to ctx["appended"]
+    return ctx
+
+registry.action("my-action", my_action, order=10)
+```
+
+CLI:
+
+| Invocation | Behaviour |
+|---|---|
+| `uzcode --cfg … --session … --act NAME [NAME…]` | action-then-run |
+| `uzcode act NAME [NAME…] --cfg … --session …` | action-only (no LLM) |
+
+Built-in `file_cru` actions: `file-changed`, `file-updated` (mark past `read_file` as `CHANGED`; inject `file_status` as `LATEST`/`MISSING`). Version is keyed by content hash. Tool `file_status` reports current disk (`LATEST` | `MISSING`).
+
 ## Authoring checklist
 
 1. Create `{root}/my_ext/__init__.py` (built-in under `src/extensions/`, or user under `.uzcode/exts/`).
 2. Implement `register(registry, config)`.
-3. Call `registry.on(...)` / `registry.tool(...)` with unique hook `name=`.
+3. Call `registry.on(...)` / `registry.tool(...)` / `registry.action(...)` with unique names.
 4. Add `"my_ext"` to `extension.enable` in `.uzcode/cfg.toml`.
 5. Optionally set `[extension.order.<hook>]`, `[exts.my_ext]`, and `[tools.<name>]`.
 

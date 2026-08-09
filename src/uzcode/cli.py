@@ -63,11 +63,7 @@ def _preview_content(content: str, limit: int = 200) -> str:
     return preview
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="uzcode",
-        description="Minimal, stateless AI coding agent",
-    )
+def _add_shared_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--workdir",
         default=".",
@@ -93,11 +89,53 @@ def build_parser() -> argparse.ArgumentParser:
             "(session.toml is a normal last cfg layer; updated after run)"
         ),
     )
+
+
+def build_run_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="uzcode",
+        description="Minimal, stateless AI coding agent",
+    )
+    _add_shared_args(parser)
+    parser.add_argument(
+        "--act",
+        nargs="+",
+        metavar="NAME",
+        help="Run registered action(s) after prepare, then run the agent loop",
+    )
     return parser
 
 
+def build_act_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="uzcode act",
+        description="Run registered action(s) only (no LLM loop)",
+    )
+    _add_shared_args(parser)
+    parser.add_argument(
+        "actions",
+        nargs="+",
+        metavar="NAME",
+        help="Action name(s) registered by extensions (e.g. file-changed)",
+    )
+    return parser
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Default (run) parser — used by tests / ``--help`` without subcommand."""
+    return build_run_parser()
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    raw = list(sys.argv[1:] if argv is None else argv)
+    action_only = bool(raw) and raw[0] == "act"
+    if action_only:
+        args = build_act_parser().parse_args(raw[1:])
+        action_names = list(args.actions)
+    else:
+        args = build_run_parser().parse_args(raw)
+        action_names = list(args.act or [])
+
     work_dir = Path(args.workdir).resolve()
     agent = CodingAgent(work_dir)
 
@@ -114,13 +152,31 @@ def main(argv: list[str] | None = None) -> int:
     print(f"session: {meta.session_dir}")
     print(f"session file: {meta.session_path}")
     print(f"request messages: {len(request.messages)}")
+    if action_names:
+        mode = "action-only" if action_only else "action-then-run"
+        print(f"actions ({mode}): {', '.join(action_names)}")
     print()
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     copy_session_to_sessionbak(meta.session_dir, stamp)
 
     try:
-        request, appended = agent.run(config, request)
+        registry = agent.load_registry(config)
+        act_appended = []
+        if action_names:
+            request, act_appended = agent.act(
+                config, request, action_names, registry=registry
+            )
+            print(
+                f"actions done: appended {len(act_appended)} message(s); "
+                f"messages now {len(request.messages)}"
+            )
+            print()
+
+        if action_only:
+            appended = act_appended
+        else:
+            request, appended = agent.run(config, request, registry=registry)
     except (FileNotFoundError, AttributeError, ImportError, TypeError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1

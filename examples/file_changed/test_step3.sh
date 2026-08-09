@@ -1,0 +1,1 @@
+uv run uzcode act file-changed --workdir ./ --cfg @dev local --session demo

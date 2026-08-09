@@ -3,10 +3,18 @@
 from __future__ import annotations
 
 import difflib
+import json
 import re
 from pathlib import Path
 from typing import Any
 
+from .envelope import (
+    STATUS_LATEST,
+    check_path_status,
+    content_hash,
+    serialize_envelope,
+    version_for_hash,
+)
 from .paths import resolve_under_work_dir
 
 
@@ -22,10 +30,32 @@ def _work_dir(ctx: dict[str, Any]) -> Path:
 
 
 def read_file(args: dict[str, Any], ctx: dict[str, Any]) -> str:
-    path = resolve_under_work_dir(_work_dir(ctx), str(args.get("path", "")))
+    path_arg = str(args.get("path", ""))
+    path = resolve_under_work_dir(_work_dir(ctx), path_arg)
     if not path.is_file():
         raise FileNotFoundError(f"Not a file: {path}")
-    return path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8")
+    state = ctx.get("state") or {}
+    messages = list(state.get("messages") or [])
+    digest = content_hash(text)
+    version = version_for_hash(messages, path_arg, digest)
+    return serialize_envelope(
+        digest=digest,
+        version=version,
+        status=STATUS_LATEST,
+        content=text,
+    )
+
+
+def file_status(args: dict[str, Any], ctx: dict[str, Any]) -> str:
+    """Report current disk status for a path (LATEST or MISSING; no content)."""
+    path_arg = str(args.get("path", ""))
+    if not path_arg.strip():
+        raise ValueError("path is required")
+    state = ctx.get("state") or {}
+    messages = list(state.get("messages") or [])
+    result = check_path_status(path_arg, messages, _work_dir(ctx))
+    return json.dumps(result, ensure_ascii=False)
 
 
 def list_dir(args: dict[str, Any], ctx: dict[str, Any]) -> str:

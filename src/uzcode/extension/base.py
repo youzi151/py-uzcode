@@ -10,6 +10,7 @@ from uzcode.skills.registry import SkillRegistry
 from uzcode.tools.registry import ToolHandler, ToolRegistry
 
 HookFn = Callable[[dict[str, Any]], dict[str, Any]]
+ActionFn = Callable[[dict[str, Any]], dict[str, Any]]
 
 HOOKS = (
     "handle_request",
@@ -30,8 +31,15 @@ class _Registration:
     order: int
 
 
+@dataclass(frozen=True)
+class _ActionRegistration:
+    name: str
+    fn: ActionFn
+    order: int
+
+
 class HookRegistry:
-    """Collects hook callables and tools registered by extensions."""
+    """Collects hook callables, tools, skills, and CLI actions registered by extensions."""
 
     def __init__(
         self,
@@ -41,6 +49,7 @@ class HookRegistry:
     ) -> None:
         self._order_overrides = order_overrides or {}
         self._hooks: dict[str, list[_Registration]] = {h: [] for h in HOOKS}
+        self._actions: dict[str, _ActionRegistration] = {}
         self.tools = tools if tools is not None else ToolRegistry()
         self.skills = skills if skills is not None else SkillRegistry()
 
@@ -51,6 +60,25 @@ class HookRegistry:
         if any(r.name == name for r in self._hooks[hook]):
             raise ValueError(f"Duplicate registration for hook {hook!r} name {name!r}")
         self._hooks[hook].append(_Registration(name=name, fn=fn, order=order))
+
+    def action(self, name: str, fn: ActionFn, *, order: int = 0) -> None:
+        """Register a CLI/API action (e.g. file-changed). Name must be unique."""
+        key = str(name).strip()
+        if not key:
+            raise ValueError("Action name must not be empty")
+        if key in self._actions:
+            raise ValueError(f"Duplicate registration for action {key!r}")
+        self._actions[key] = _ActionRegistration(name=key, fn=fn, order=order)
+
+    def actions(self) -> list[str]:
+        """Registered action names sorted by order then name."""
+        return [
+            r.name
+            for r in sorted(
+                self._actions.values(),
+                key=lambda r: (r.order, r.name),
+            )
+        ]
 
     def tool(
         self,
@@ -99,4 +127,23 @@ class HookRegistry:
         )
         for reg in regs:
             ctx = reg.fn(ctx)
+        return ctx
+
+    def run_action(self, name: str, ctx: dict[str, Any]) -> dict[str, Any]:
+        """Run one registered action by name."""
+        key = str(name).strip()
+        reg = self._actions.get(key)
+        if reg is None:
+            known = ", ".join(self.actions()) or "(none)"
+            raise ValueError(f"Unknown action {key!r}; registered: {known}")
+        ctx = dict(ctx)
+        ctx["action"] = key
+        return reg.fn(ctx)
+
+    def run_actions(
+        self, names: list[str], ctx: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Run named actions in the given order (each must be registered)."""
+        for name in names:
+            ctx = self.run_action(name, ctx)
         return ctx

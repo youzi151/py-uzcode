@@ -19,6 +19,10 @@ max_iterations = 20
 enable = true
 permission = "approve"
 
+[tools.file_status]
+enable = true
+permission = "approve"
+
 [tools.list_dir]
 enable = true
 permission = "approve"

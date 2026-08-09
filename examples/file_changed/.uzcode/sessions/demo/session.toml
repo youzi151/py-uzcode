@@ -1,0 +1,6 @@
+[[req.messages]]
+ref = "__system"
+
+[[req.messages]]
+role = "user"
+content = "read both files of \"file_a.txt\", \"file_b.txt\""

@@ -1,0 +1,33 @@
+[llm]
+base_url = "http://127.0.0.1:8081/v1"
+api_key = "1"
+model = "1"
+
+[loop]
+auto_loop = true
+max_iterations = 10
+
+[tools.read_file]
+enable = true
+permission = "approve"
+
+[tools.file_status]
+enable = true
+permission = "approve"
+
+[tools.list_dir]
+enable = true
+permission = "approve"
+
+[tools.grep]
+enable = true
+permission = "approve"
+
+[extension]
+enable = ["logging", "file_cru"]
+
+[extension.order.before_llm]
+logging = 10
+
+[extension.order.after_llm]
+logging = 100

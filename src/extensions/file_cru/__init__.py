@@ -7,10 +7,22 @@ from pathlib import Path
 from typing import Any
 
 from . import handlers
+from .actions import act_file_changed, act_file_updated
 from .mentions import handle_file_mentions
 from .paths import resolve_under_work_dir
 
 _READ_PARAMS = {
+    "type": "object",
+    "properties": {
+        "path": {
+            "type": "string",
+            "description": "Path relative to work_dir",
+        },
+    },
+    "required": ["path"],
+}
+
+_FILE_STATUS_PARAMS = {
     "type": "object",
     "properties": {
         "path": {
@@ -118,9 +130,23 @@ def _preview_if_needed(ctx: dict[str, Any]) -> str | None:
 def register(registry, config) -> None:
     registry.tool(
         "read_file",
-        description="Read a text file under the work directory",
+        description=(
+            "Read a text file under the work directory. "
+            "Returns JSON: {hash, version, status, content} "
+            "where status is LATEST on a fresh read."
+        ),
         parameters=_READ_PARAMS,
         handler=handlers.read_file,
+    )
+    registry.tool(
+        "file_status",
+        description=(
+            "Check the current on-disk status of a path relative to session "
+            "versions. Returns JSON: {path, version, hash, status} with status "
+            "LATEST or MISSING (no file content). Past read_file rows use CHANGED."
+        ),
+        parameters=_FILE_STATUS_PARAMS,
+        handler=handlers.file_status,
     )
     registry.tool(
         "list_dir",
@@ -160,3 +186,5 @@ def register(registry, config) -> None:
 
     registry.on("handle_request", handle_request, order=10, name="file_cru")
     registry.on("before_tool", before_tool, order=50, name="file_cru")
+    registry.action("file-changed", act_file_changed, order=10)
+    registry.action("file-updated", act_file_updated, order=10)

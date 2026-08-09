@@ -1,0 +1,1 @@
+echo "aa" > ./file_a.txt

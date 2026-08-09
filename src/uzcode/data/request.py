@@ -138,6 +138,16 @@ class Request:
             return []
         return [Message.from_dict(m) for m in req.get("messages", [])]
 
+    def sync_session_doc(self) -> None:
+        """Write ``self.messages`` into ``session_doc[req].messages``.
+
+        Required after in-place mutations (e.g. CLI actions) so ``engine.run``
+        keeps them via ``session_messages()`` + append.
+        """
+        req_body = dict(self.session_doc.get("req") or {})
+        req_body["messages"] = [_message_to_toml(msg) for msg in self.messages]
+        self.session_doc["req"] = req_body
+
     def write(
         self,
         path: str | Path | None = None,
