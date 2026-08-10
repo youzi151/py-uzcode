@@ -47,13 +47,13 @@ class Message:
         )
 
 
-def copy_session_to_sessionbak(session_dir: str | Path, stamp: str) -> Path | None:
-    """Copy ``session.toml`` into ``sessionbak/`` before a run. Returns bak path or None."""
+def copy_session_to_bak(session_dir: str | Path, stamp: str) -> Path | None:
+    """Copy ``session.toml`` into ``bak/`` before a run. Returns bak path or None."""
     session_dir = Path(session_dir).resolve()
     src = session_dir / "session.toml"
     if not src.is_file():
         return None
-    bak_dir = session_dir / "sessionbak"
+    bak_dir = session_dir / "bak"
     bak_dir.mkdir(parents=True, exist_ok=True)
     bak_path = bak_dir / f"session.{stamp}.toml"
     shutil.copy2(src, bak_path)

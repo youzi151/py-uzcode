@@ -15,6 +15,7 @@ ActionFn = Callable[[dict[str, Any]], dict[str, Any]]
 HOOKS = (
     "handle_request",
     "before_llm",
+    "before_call_llm",
     "after_llm",
     "before_tool",
     "after_tool",

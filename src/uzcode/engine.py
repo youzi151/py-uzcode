@@ -409,7 +409,7 @@ def _execute_with_retry(
     return last_error or f"Error: tool {name!r} failed"
 
 
-def _build_graph(config: Config, registry: HookRegistry):
+def _build_graph(config: Config, registry: HookRegistry, request: Request):
     def handle_request(state: AgentState) -> AgentState:
         working = _copy_state(state)
         working["skills_enabled"] = _seed_skills_enabled(config, registry)
@@ -444,6 +444,22 @@ def _build_graph(config: Config, registry: HookRegistry):
         tools = registry.tools.openai_tools(config)
         if tools:
             kwargs["tools"] = tools
+
+        # Exportable payload for before_call_llm (no secrets). Side-effect only.
+        llm_request: dict[str, Any] = {
+            "model": kwargs["model"],
+            "messages": kwargs["messages"],
+            "api_base": kwargs["api_base"],
+            "iteration": iteration,
+        }
+        if tools:
+            llm_request["tools"] = tools
+        hook_state = _copy_state(state)
+        hook_state["iteration"] = iteration
+        call_ctx = _hook_ctx(hook_state, config)
+        call_ctx["llm_request"] = llm_request
+        call_ctx["request"] = request
+        registry.run("before_call_llm", call_ctx)
 
         response = litellm.completion(**kwargs)
         choice = response.choices[0].message
@@ -649,7 +665,7 @@ def run(
     resolved after ``before_llm`` for the API only. No disk I/O.
     """
     reg = registry if registry is not None else HookRegistry()
-    graph = _build_graph(config, reg)
+    graph = _build_graph(config, reg, request)
 
     session_base = request.session_messages()
     messages = _messages_to_dicts(request.messages)

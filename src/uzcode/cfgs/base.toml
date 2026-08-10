@@ -12,6 +12,6 @@ role = "system"
 content = ""
 
 [extension]
-enable = ["logging"]
+enable = ["logging", "llm_sent"]
 [extension.__merge]
 enable = "after"

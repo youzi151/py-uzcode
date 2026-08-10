@@ -10,7 +10,7 @@ from pathlib import Path
 
 from uzcode import CodingAgent
 from uzcode.data import Config
-from uzcode.data.request import copy_session_to_sessionbak, persist_session
+from uzcode.data.request import copy_session_to_bak, persist_session
 
 
 def _format_config(config: Config) -> str:
@@ -158,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
     print()
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    copy_session_to_sessionbak(meta.session_dir, stamp)
+    copy_session_to_bak(meta.session_dir, stamp)
 
     try:
         registry = agent.load_registry(config)
