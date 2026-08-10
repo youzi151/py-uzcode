@@ -1,183 +1,93 @@
 """uzcode — a minimal, stateless AI coding agent."""
 
-
-
 from __future__ import annotations
-
-
 
 from pathlib import Path
 
-
-
 from uzcode import cfg
-
 from uzcode import engine
-
 from uzcode.cfg import PrepareMeta
-
 from uzcode.data import Config, Message, Request
-
 from uzcode.extension import HookRegistry, load_extensions
-
-
 
 __all__ = ["CodingAgent", "Config", "Message", "PrepareMeta", "Request"]
 
 
-
-
-
 class CodingAgent:
-
     """Public API: prepare Config/Request from cfg+session, then run the engine."""
 
-
-
     def __init__(self, work_dir: str | Path = "."):
-
         self.work_dir = Path(work_dir).resolve()
 
-
-
     def prepare(
-
         self,
-
         cfg_tokens: list[str],
-
         session: str,
-
     ) -> tuple[Config, Request, PrepareMeta]:
-
         """Collect cfg + session via ``cfg.prepare``."""
-
         return cfg.prepare(self.work_dir, cfg_tokens, session)
 
-
-
     def load_registry(self, config: Config) -> HookRegistry:
-
         """Load extensions for this work_dir + config."""
-
         return load_extensions(self.work_dir, config)
 
-
-
     def act(
-
         self,
-
         config: Config,
-
         request: Request,
-
         action_names: list[str],
-
         *,
-
         registry: HookRegistry | None = None,
-
     ) -> tuple[Request, list[Message]]:
-
         """Run registered actions that may mutate ``request.messages``.
 
-
-
         Syncs ``session_doc`` afterward so a following ``run`` persists mutations.
-
         Returns ``(request, appended)`` where ``appended`` is messages added by
-
         actions (tail beyond the pre-act length).
-
         """
-
         if not action_names:
-
             return request, []
 
-
-
         reg = registry if registry is not None else self.load_registry(config)
-
         before_len = len(request.messages)
 
         ctx: dict = {
-
             "config": config,
-
             "request": request,
-
             "registry": reg,
-
             "action": "",
-
             "appended": [],
-
         }
-
         ctx = reg.run_actions(action_names, ctx)
-
         request = ctx.get("request", request)
-
         if not isinstance(request, Request):
-
             raise TypeError("action ctx['request'] must be a Request")
-
-
 
         request.sync_session_doc()
 
-
-
         # Prefer action-reported appends; else infer from message growth.
-
         reported = ctx.get("appended")
-
         if isinstance(reported, list) and reported:
-
             appended = [
-
                 m if isinstance(m, Message) else Message.from_dict(m)
-
                 for m in reported
-
             ]
-
         else:
-
             appended = list(request.messages[before_len:])
-
         return request, appended
 
-
-
     def run(
-
         self,
-
         config: Config,
-
         request: Request,
-
         *,
-
         registry: HookRegistry | None = None,
-
     ) -> tuple[Request, list[Message]]:
-
         """Run the agent loop. Returns session messages with this run's turns appended.
-
-
-
         Does not write session files — callers persist (CLI does sessionbak/diffs/session.toml).
-
         Session refs/messages are preserved; only assistant/tool turns are appended.
-
         """
-
         reg = registry if registry is not None else self.load_registry(config)
-
         return engine.run(config, request, registry=reg)
 
 

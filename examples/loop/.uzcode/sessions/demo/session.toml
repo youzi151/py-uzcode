@@ -1,9 +1,91 @@
-[[request.messages]]
+[[req.messages]]
 ref = "__system"
 
-[[request.messages]]
-ref = "__skill"
-
-[[request.messages]]
+[[req.messages]]
 role = "user"
-content = 'find the text file include email address in work dir, and write "{file_name}:{email}" into an array to ./result.json.\n you can just reply short msg, it is more important on tool calls'
+content = "run sh \"ls -a\" at cwd, find the text file include email address, write \"[\"{file_name}:{email}\", \"{file_name}:{email}\", ...]\" as array to ./result.json"
+
+[[req.messages]]
+role = "assistant"
+content = ""
+
+[[req.messages.tool_calls]]
+id = "GK1fLdvB1SeDccFxL4qQ4fOFM0lI2OXC"
+type = "function"
+
+[req.messages.tool_calls.function]
+name = "run_shell"
+arguments = "{\"command\": \"ls -a\", \"timeout_sec\": 60}"
+
+[[req.messages]]
+role = "tool"
+content = "exit_code: 0\nstdout:\n.\n..\n.exe\n.uzcode\n-c\nls -a\nrecord1.txt\nrecord2.txt\nresult.json\ntest.sh\n\nstderr:\n(empty)"
+tool_call_id = "GK1fLdvB1SeDccFxL4qQ4fOFM0lI2OXC"
+
+[[req.messages]]
+role = "assistant"
+content = ""
+
+[[req.messages.tool_calls]]
+id = "ZSugeokSTnBFqK5YSqQ4X7LyGM8AeWUR"
+type = "function"
+
+[req.messages.tool_calls.function]
+name = "grep"
+arguments = "{\"pattern\": \"\\\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Z|a-z]{2,}\\\\b\", \"path\": \"record1.txt\", \"max_hits\": 100}"
+
+[[req.messages]]
+role = "tool"
+content = "(no matches)"
+tool_call_id = "ZSugeokSTnBFqK5YSqQ4X7LyGM8AeWUR"
+
+[[req.messages]]
+role = "assistant"
+content = ""
+
+[[req.messages.tool_calls]]
+id = "9ZIjm3MPWX5QBmnOM7F8cMI0daW5boZF"
+type = "function"
+
+[req.messages.tool_calls.function]
+name = "grep"
+arguments = "{\"pattern\": \"\\\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Z|a-z]{2,}\\\\b\", \"path\": \"record2.txt\", \"max_hits\": 100}"
+
+[[req.messages]]
+role = "tool"
+content = "record2.txt:5:test123@testmail.com"
+tool_call_id = "9ZIjm3MPWX5QBmnOM7F8cMI0daW5boZF"
+
+[[req.messages]]
+role = "assistant"
+content = ""
+
+[[req.messages.tool_calls]]
+id = "5FbmAeZcie7lt52y2W5pfMt2gPhhpiSB"
+type = "function"
+
+[req.messages.tool_calls.function]
+name = "write_file"
+arguments = "{\"path\": \"./result.json\", \"content\": \"[\\\"record2.txt:test123@testmail.com\\\"]\"}"
+
+[[req.messages]]
+role = "tool"
+content = "Wrote 36 chars to ./result.json"
+tool_call_id = "5FbmAeZcie7lt52y2W5pfMt2gPhhpiSB"
+
+[[req.messages]]
+role = "assistant"
+content = ""
+
+[[req.messages.tool_calls]]
+id = "exFCrT2Hg5kMt0UnfNIaLahxoBZObg2N"
+type = "function"
+
+[req.messages.tool_calls.function]
+name = "summarize_task"
+arguments = "{\"summary\": \"Ran 'ls -a' to list files, used grep to find email in record2.txt, and wrote result to ./result.json. Found 1 email in record2.txt.\", \"next_steps\": \"\"}"
+
+[[req.messages]]
+role = "tool"
+content = "Task summary written to .uzcode/summaries. It will open when the run finishes (if auto_open)."
+tool_call_id = "exFCrT2Hg5kMt0UnfNIaLahxoBZObg2N"

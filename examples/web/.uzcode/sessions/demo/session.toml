@@ -1,9 +1,9 @@
-[[request.messages]]
+[[req.messages]]
 ref = "__system"
 
-[[request.messages]]
+[[req.messages]]
 ref = "__skill"
 
-[[request.messages]]
+[[req.messages]]
 role = "user"
 content = "who is youzi151 on internet?"

@@ -1,9 +1,9 @@
-[[request.messages]]
+[[req.messages]]
 ref = "__system"
 
-[[request.messages]]
+[[req.messages]]
 ref = "__skill"
 
-[[request.messages]]
+[[req.messages]]
 role = "user"
 content = "write 1 to 10 as json array in \"./test1to10.md\""

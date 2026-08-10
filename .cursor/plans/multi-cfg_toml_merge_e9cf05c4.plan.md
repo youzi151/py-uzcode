@@ -37,7 +37,7 @@ CLI only resolves/loads TOML paths into a **list of dicts**. `CodingAgent` merge
 | Today | Target |
 |-------|--------|
 | Fixed `{workdir}/.uzcode/cfg.toml` | Multiple `--cfg` layers merged by overdict |
-| Separate `--req` (`[[messages]]` top-level) | Request lives under `[request]` (e.g. `[[request.messages]]`) |
+| Separate `--req` (`[[messages]]` top-level) | Request lives under `[request]` (e.g. `[[req.messages]]`) |
 | `--out` defaults to overwrite `--req` | `--out` or auto `./output_<timestamp>.toml` |
 | No backup | Existing `--out` file → `.uzcode/outbak/<name>.<ts>.toml` then write |
 | `CodingAgent.run` stub loads files itself | Agent receives cfg dict list, merges, separates request |
@@ -118,7 +118,7 @@ Request layer:
 [request]
 # optional future keys
 
-[[request.messages]]
+[[req.messages]]
 role = "user"
 content = "..."
 ```

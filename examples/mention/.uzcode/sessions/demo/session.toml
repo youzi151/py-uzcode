@@ -1,9 +1,9 @@
-[[request.messages]]
+[[req.messages]]
 ref = "__system"
 
-[[request.messages]]
+[[req.messages]]
 ref = "__skill"
 
-[[request.messages]]
+[[req.messages]]
 role = "user"
 content = "find the user name in @{folder:files} , @{file!:files/my_name.txt} , @{skill!:demo-skill} , then write a file into @{file:./results/answer.txt}"
