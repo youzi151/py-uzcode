@@ -124,12 +124,12 @@ Mention：`@{search|fetch[:!]:text}`（引擎解析；`web` ext exact `cmd`）�
 
 ## Phase 8 — Sessions（取代 History / outbak）
 
-**完成標準**：`--session` 必填；每次執行寫入 `sessionbak/` + `diffs/` 並覆寫 `session.toml`。
+**完成標準**：`--session` 必填；每次執行寫入 `bak/` + `diff/` 並覆寫 `session.toml`。
 
 - [x] CLI：`--workdir` / `--cfg` / `--session`（移除 `--out` / `--full` / `--diff`）
 - [x] Engine：純 in-memory（config + request → transcript + appended）
 - [x] CodingAgent.prepare → `cfg.prepare`（session `session.toml` 作最後一層 merge）
-- [x] CLI：parse + sessionbak + run + persist（diffs / session.toml）
+- [x] CLI：parse + bak + run + persist（diff / session.toml）
 - [x] 範例改為 `.uzcode/sessions/demo/session.toml`
 
 ---

@@ -31,8 +31,8 @@
 │   └── sessions/            # 互動紀錄（session）
 │       └── <name>/
 │           ├── session.toml # 完整 transcript（使用者可手改）
-│           ├── sessionbak/      # 每次執行前的 request 備份
-│           └── diffs/       # 每次執行新增的 messages
+│           ├── bak/      # 每次執行前的 request 備份
+│           └── diff/       # 每次執行新增的 messages
 └── ... (你的專案檔案)
 ```
 
@@ -47,7 +47,7 @@
 
 ### 2. Session (` .uzcode/sessions/<name>/session.toml`)
 - 作為 **最後一層 cfg** 參與 merge（與一般 `--cfg` 檔相同）
-- 存放 durable transcript；執行前 `sessionbak/`，執行後覆寫並寫入 `diffs/`
+- 存放 durable transcript；執行前 `bak/`，執行後覆寫並寫入 `diff/`
 - 使用者可手改後再跑，做 replay / fork
 
 ### 3. Extension 系統
@@ -79,7 +79,7 @@
 4. 處理 tool calls（尊重 config 權限）
 5. 如啟用 auto_loop 則繼續直到無 tool calls
 6. After extension
-7. 寫回 session：`sessionbak/` + `diffs/` + 覆寫 `session.toml`
+7. 寫回 session：`bak/` + `diff/` + 覆寫 `session.toml`
 
 ### 6. Tools（基礎集合）
 - `read_file` / `write_file` / `edit_file` / `list_dir` / `grep`
@@ -109,7 +109,7 @@ from uzcode import CodingAgent
 agent = CodingAgent(work_dir="./myproject")
 # config, request, meta = agent.prepare(["@dev"], "sfeature_aaa")
 # request, appended = agent.run(config, request)
-# CLI persists session files (sessionbak / diffs / session.toml)
+# CLI persists session files (bak / diff / session.toml)
 ```
 
 ## 未來擴充方向

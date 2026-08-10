@@ -69,7 +69,9 @@ Engine writes back **only** `ctx["state"]`. `config` / `tool` / `error` never en
 
 | Hook | When | Typical use |
 |------|------|-------------|
+| `handle_request` | Once at start | mentions, seed skills, mutate request state |
 | `before_llm` | Before each LLM call | preprocess messages, inject context |
+| `before_call_llm` | After kwargs built, before send | audit/export `ctx["llm_request"]` (no `api_key`); `ctx["request"]` set |
 | `after_llm` | After assistant message appended | log, transform response |
 | `before_tool` | Per tool call, before execute | preview, custom permission (`ctx["tool"]`) |
 | `after_tool` | Per tool call, after execute/skip | rewrite `tool.result`, audit; may set `state.stop_loop` |
@@ -100,6 +102,9 @@ ctx = {
     "config": Config,
     "tool": ToolCtx | None,    # set for before_tool / after_tool / handlers
     "error": Exception | None, # set for on_error only
+    # before_call_llm only:
+    # "llm_request": {...},    # exportable LiteLLM kwargs (no api_key)
+    # "request": Request,      # session path via request.path
 }
 ```
 

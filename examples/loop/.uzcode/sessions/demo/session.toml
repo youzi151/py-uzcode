@@ -3,4 +3,4 @@ ref = "__system"
 
 [[req.messages]]
 role = "user"
-content = "run sh \"ls -a\" at cwd, find the text file include email address, write \"[\"{file_name}:{email}\", \"{file_name}:{email}\", ...]\" as array to ./result.json"
+content = "must run shell \"ls -a\" at cwd first to check files. then find the text file include email address, write \"[\"{file_name}:{email}\", \"{file_name}:{email}\", ...]\" as array to ./result.json"

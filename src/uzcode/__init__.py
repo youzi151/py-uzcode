@@ -84,7 +84,7 @@ class CodingAgent:
         registry: HookRegistry | None = None,
     ) -> tuple[Request, list[Message]]:
         """Run the agent loop. Returns session messages with this run's turns appended.
-        Does not write session files — callers persist (CLI does bak/diffs/session.toml).
+        Does not write session files — callers persist (CLI does bak/diff/session.toml).
         Session refs/messages are preserved; only assistant/tool turns are appended.
         """
         reg = registry if registry is not None else self.load_registry(config)

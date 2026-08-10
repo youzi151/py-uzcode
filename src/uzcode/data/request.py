@@ -55,7 +55,7 @@ def copy_session_to_bak(session_dir: str | Path, stamp: str) -> Path | None:
         return None
     bak_dir = session_dir / "bak"
     bak_dir.mkdir(parents=True, exist_ok=True)
-    bak_path = bak_dir / f"session.{stamp}.toml"
+    bak_path = bak_dir / f"session_{stamp}.toml"
     shutil.copy2(src, bak_path)
     return bak_path
 
@@ -67,14 +67,14 @@ def persist_session(
     *,
     stamp: str,
 ) -> None:
-    """Write ``diffs/<stamp>.toml`` and overwrite session ``session.toml``.
+    """Write ``diff/diff_<stamp>.toml`` and overwrite session ``session.toml``.
 
     Session file keeps authored refs / messages / messagelib; only LLM
     assistant/tool turns are appended under ``[request].messages``.
     """
     session_dir = Path(session_dir).resolve()
     request.write(
-        session_dir / "diffs" / f"{stamp}.toml",
+        session_dir / "diff" / f"diff_{stamp}.toml",
         messages=appended,
         diff=True,
     )

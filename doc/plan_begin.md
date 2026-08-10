@@ -59,8 +59,8 @@ src/uzcode/
 │   └── sessions/            # 互動 session（取代 history / outbak）
 │       └── <name>/
 │           ├── session.toml
-│           ├── sessionbak/
-│           └── diffs/
+│           ├── bak/
+│           └── diff/
 └── ... (專案檔案)
 
 src/extensions/             # 內建 extension（隨套件）
@@ -277,7 +277,7 @@ permission = "approve"
 
 ### Phase 8 — Sessions（取代 History / outbak）
 
-CLI 改為 session-only：`--workdir` + `--cfg` + `--session`。`cfg.prepare`（經 `CodingAgent.prepare`）將 session `session.toml` 當最後一層 cfg merge；Engine 只回傳 in-memory transcript；CLI 負責 `sessionbak/`、`diffs/`、覆寫 `session.toml`。
+CLI 改為 session-only：`--workdir` + `--cfg` + `--session`。`cfg.prepare`（經 `CodingAgent.prepare`）將 session `session.toml` 當最後一層 cfg merge；Engine 只回傳 in-memory transcript；CLI 負責 `bak/`、`diff/`、覆寫 `session.toml`。
 
 **完成標準**：`uzcode --workdir . --cfg @dev --session demo` 可載入並寫回 session 目錄。
 
@@ -394,7 +394,7 @@ uzcode --workdir ./myproject --cfg @dev --session sfeature_aaa
 
 ## 7. 驗收標準（整體）
 
-1. 一次 CLI 執行：載入 session `session.toml` → LLM + tools 迴圈 → 寫回 session（sessionbak / diffs / session.toml）
+1. 一次 CLI 執行：載入 session `session.toml` → LLM + tools 迴圈 → 寫回 session（bak / diff / session.toml）
 2. 使用者可手改 `session.toml` 後直接 replay / fork
 3. extension 可攔截寫檔類 tool，實作 confirm / preview，無需改引擎
 4. 工作目錄無未確認變更、無自動 git 副作用
