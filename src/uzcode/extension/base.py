@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from uzcode.skills.registry import SkillRegistry
-from uzcode.tools.registry import ToolHandler, ToolRegistry
+from uzcode.tools.registry import ToolAskFn, ToolHandler, ToolRegistry
 
 HookFn = Callable[[dict[str, Any]], dict[str, Any]]
 ActionFn = Callable[[dict[str, Any]], dict[str, Any]]
@@ -87,12 +87,14 @@ class HookRegistry:
         description: str,
         parameters: dict[str, Any],
         handler: ToolHandler,
+        ask: ToolAskFn | None = None,
     ) -> None:
         self.tools.register(
             name,
             description=description,
             parameters=parameters,
             handler=handler,
+            ask=ask,
         )
 
     def skill(

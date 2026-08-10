@@ -1,6 +1,7 @@
 """Tool registry (handlers come from extensions)."""
 
 from uzcode.tools.registry import (
+    ToolAskFn,
     ToolHandler,
     ToolRegistry,
     ToolSpec,
@@ -10,6 +11,7 @@ from uzcode.tools.registry import (
 )
 
 __all__ = [
+    "ToolAskFn",
     "ToolHandler",
     "ToolRegistry",
     "ToolSpec",

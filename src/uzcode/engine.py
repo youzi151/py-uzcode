@@ -541,7 +541,14 @@ def _build_graph(config: Config, registry: HookRegistry):
             tool = ctx["tool"]
 
             if not tool.get("skip") and permission == "ask":
-                if _ask_user_yn(name, arguments):
+                spec = registry.tools.get(name)
+                ask_fn = spec.ask if spec is not None else None
+                approved = (
+                    ask_fn(arguments, ctx)
+                    if ask_fn is not None
+                    else _ask_user_yn(name, arguments)
+                )
+                if approved:
                     tool["skip"] = False
                     tool["result"] = None
                 else:

@@ -11,22 +11,21 @@ from typing import Any
 from uzcode.tools.registry import tool_cfg
 
 _DEFAULT_TIMEOUT = 60
-_MAX_TIMEOUT = 300
 _MAX_OUTPUT_CHARS = 32 * 1024
 
 _SH_PARAMS = {
     "type": "object",
     "properties": {
+        "intent": {
+            "type": "string",
+            "description": "Short purpose of this command (for logs and user approval)",
+        },
         "command": {
             "type": "string",
             "description": "Shell command to run with cwd fixed to the work directory",
         },
-        "timeout_sec": {
-            "type": "number",
-            "description": "Optional timeout in seconds (default from cfg or 60)",
-        },
     },
-    "required": ["command"],
+    "required": ["intent", "command"],
 }
 
 
@@ -80,38 +79,31 @@ def _resolve_shell_executable(cfg: dict[str, Any]) -> str | None:
     return _path_usable("/bin/sh")
 
 
-def make_sh_handler(default_timeout: float, executable: str | None = None):
+def make_sh_handler(config: dict[str, Any], executable: str):
     def sh(args: dict[str, Any], ctx: dict[str, Any]) -> str:
+        toolcfg = tool_cfg(config, "run_shell")
+        timeout_sec = toolcfg.get('timeout_sec')
+        
         command = str(args.get("command", "") or "")
         if not command.strip():
             return "Error: command is required"
-
-        timeout = args.get("timeout_sec")
-        if timeout is None:
-            timeout = default_timeout
-        try:
-            timeout_f = float(timeout)
-        except (TypeError, ValueError):
-            return "Error: timeout_sec must be a number"
-        if timeout_f <= 0:
-            return "Error: timeout_sec must be positive"
-        timeout_f = min(timeout_f, float(_MAX_TIMEOUT))
 
         work_dir = _work_dir(ctx)
         run_kwargs: dict[str, Any] = {
             "cwd": str(Path(work_dir)),
             "capture_output": True,
             "text": True,
-            "timeout": timeout_f,
             "errors": "replace",
         }
+        if timeout_sec is not None:
+            run_kwargs["timeout"] = timeout_sec
         if executable:
             run_kwargs["executable"] = executable
         try:
             completed = subprocess.run([f'"{executable}"', "-c", command], **run_kwargs)
         except subprocess.TimeoutExpired:
             return (
-                f"Error: command timed out after {timeout_f:g}s\n"
+                f"Error: command timed out after {timeout_sec:g}s\n"
                 f"command: {command}"
             )
         except OSError as exc:
@@ -131,17 +123,40 @@ def make_sh_handler(default_timeout: float, executable: str | None = None):
     return sh
 
 
+def make_ask_run_shell(config: dict[str, Any], executable: str):
+    def ask_run_shell(arguments: dict[str, Any], ctx: dict[str, Any]) -> bool:
+        """User confirmation UX for run_shell (permission=ask)."""
+        toolcfg = tool_cfg(config, "run_shell")
+        timeout_sec = toolcfg.get('timeout_sec')
+        command = str(arguments.get("command", "") or "")
+        intent = str(arguments.get("intent", "") or "").strip()
+        lines = ["[run_shell] approve shell command?"]
+        lines.append(f"  shell:  {executable}")
+        if timeout_sec is not None:
+            lines.append(f"  timeout_sec: {timeout_sec:g}")
+        if intent:
+            lines.append(f"  intent: {intent}")
+        lines.append(f"  command: {command}")
+        lines.append("Approve? (Y/n) ")
+        print("\n".join(lines), file=sys.stderr, end="")
+        sys.stderr.flush()
+        try:
+            answer = input().strip().lower()
+        except EOFError:
+            return False
+        return answer in ("", "y", "yes")
+
+    return ask_run_shell
+
+
 def register(registry, config) -> None:
-    cfg = tool_cfg(config, "run_shell")
-    raw_timeout = cfg.get("timeout_sec", _DEFAULT_TIMEOUT)
-    try:
-        default_timeout = float(raw_timeout)
-    except (TypeError, ValueError):
-        default_timeout = float(_DEFAULT_TIMEOUT)
-    default_timeout = max(1.0, min(default_timeout, float(_MAX_TIMEOUT)))
-    executable = _resolve_shell_executable(cfg)
+    toolcfg = tool_cfg(config, "run_shell")
+    executable = _resolve_shell_executable(toolcfg)
     if executable is None:
-        raise ValueError("shell executable not found, need to set shell in config or environment variable SHELL")
+        raise ValueError(
+            "shell executable not found, need to set shell in config or "
+            "environment variable SHELL"
+        )
 
     registry.tool(
         "run_shell",
@@ -152,5 +167,6 @@ def register(registry, config) -> None:
             f"Write commands that are syntactically valid for this specific shell."
         ),
         parameters=_SH_PARAMS,
-        handler=make_sh_handler(default_timeout, executable),
+        handler=make_sh_handler(config, executable),
+        ask=make_ask_run_shell(config, executable),
     )

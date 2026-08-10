@@ -9,6 +9,7 @@ from typing import Any
 from uzcode.data import Config
 
 ToolHandler = Callable[[dict[str, Any], dict[str, Any]], str]
+ToolAskFn = Callable[[dict[str, Any], dict[str, Any]], bool]
 
 
 @dataclass(frozen=True)
@@ -17,6 +18,7 @@ class ToolSpec:
     description: str
     parameters: dict[str, Any]
     handler: ToolHandler
+    ask: ToolAskFn | None = None
 
 
 def tool_cfg(config: Config, name: str) -> dict[str, Any]:
@@ -63,6 +65,7 @@ class ToolRegistry:
         description: str,
         parameters: dict[str, Any],
         handler: ToolHandler,
+        ask: ToolAskFn | None = None,
     ) -> None:
         if name in self._tools:
             raise ValueError(f"Duplicate tool registration: {name!r}")
@@ -71,6 +74,7 @@ class ToolRegistry:
             description=description,
             parameters=parameters,
             handler=handler,
+            ask=ask,
         )
 
     def get(self, name: str) -> ToolSpec | None:

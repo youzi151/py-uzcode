@@ -123,7 +123,7 @@ ctx["tool"]["skip"] = True          # only when tool is not None
 Permission behavior (engine):
 
 - **`approve`**: run unless a ext sets `tool["skip"]`
-- **`ask`**: after `before_tool`, engine prompts `(Y/n)` if not already skipped
+- **`ask`**: after `before_tool`, if not already skipped, engine calls the tool’s optional `ask(arguments, ctx) -> bool` if registered; otherwise prompts default `(Y/n)`
 - **`custom`**: engine starts with `skip=True` and a deny `result`; ext must clear `skip` (and clear/set `result`) to approve — no Y/n
 
 ## Registering tools
@@ -131,6 +131,10 @@ Permission behavior (engine):
 Tools have no privilege in the core — exts register them:
 
 ```python
+def my_ask(arguments: dict, ctx: dict) -> bool:
+    # Custom UX from args / tool_cfg(ctx["config"], "my_tool"); return True to approve
+    ...
+
 registry.tool(
     "my_tool",
     description="…",
@@ -140,10 +144,11 @@ registry.tool(
         "required": ["path"],
     },
     handler=my_handler,  # (args: dict, ctx: dict) -> str
+    ask=my_ask,  # optional; used only when permission=ask
 )
 ```
 
-Per-tool cfg (`[tools.<name>]`): `enable`, `permission`, `preview_diff`, `retry`, `on_failure`. Default permission when omitted: `ask`. Handlers must not decide permission — use cfg + `before_tool`. To end the agent loop after this turn: `ctx["state"]["stop_loop"]=True`. Cross-turn ext data: `ctx["state"]["extra"]`.
+Per-tool cfg (`[tools.<name>]`): `enable`, `permission`, `preview_diff`, `retry`, `on_failure`. Default permission when omitted: `ask`. Handlers must not decide permission — use cfg + `before_tool` / optional `ask`. To end the agent loop after this turn: `ctx["state"]["stop_loop"]=True`. Cross-turn ext data: `ctx["state"]["extra"]`.
 
 ## Registering actions
 
