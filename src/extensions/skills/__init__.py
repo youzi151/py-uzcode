@@ -66,9 +66,18 @@ def _skill_lib_has_catalog(messagelib: dict[str, Any]) -> bool:
 
 def register(registry, config) -> None:
     work_dir = Path(config.work_dir).resolve()
-    skills_dir = work_dir / ".uzcode" / "skills"
 
-    for skill in discover(skills_dir, work_dir=work_dir):
+    name2skill = {}
+
+    skills_dirs = [
+        work_dir / ".agents" / "skills",
+        work_dir / ".uzcode" / "skills",
+    ]
+    for skills_dir in skills_dirs:
+        for skill in discover(skills_dir):
+            name2skill[skill.name] = skill
+
+    for skill in name2skill.values():
         registry.skills.register(
             skill.name,
             description=skill.description,
