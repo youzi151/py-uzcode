@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -84,82 +83,80 @@ def load_toml(path: str | Path) -> dict[str, Any]:
     return data
 
 
-def _normalize_redirect(value: Any, path: Path) -> list[str]:
+def _normalize_cfg_insert(value: Any, path: Path) -> list[str]:
     if isinstance(value, str):
         tokens = [value]
     elif isinstance(value, list):
         tokens = value
     else:
         raise ValueError(
-            f"redirect in {path} must be a string or list of strings"
+            f"cfg_insert in {path} must be a string or list of strings"
         )
     if not tokens:
-        raise ValueError(f"redirect in {path} must not be empty")
+        raise ValueError(f"cfg_insert in {path} must not be empty")
     out: list[str] = []
     for item in tokens:
         if not isinstance(item, str) or not item.strip():
             raise ValueError(
-                f"redirect in {path} must contain only non-empty strings"
+                f"cfg_insert in {path} must contain only non-empty strings"
             )
         out.append(item.strip())
     return out
 
 
-def _expand_under_redirect(
+def _expand_cfg_token(
     work_dir: Path,
     token: str,
-    redirected: list[Path],
-    paths: list[Path],
-    cfg_dicts: list[dict[str, Any]],
+    out_paths: list[Path],
+    out_cfg_dicts: list[dict[str, Any]],
+    exist_stack: list[Path] = [],
 ) -> None:
-    """Expand one token under a root redirect's redirected list."""
+    """Expand one cfg token into the flat layer lists.
+
+    ``cfg_insert`` lists are spliced before this file's own dict (meta key
+    stripped). Alias-only files (``cfg_insert`` alone) contribute no layer.
+    Re-entering a path already on the expansion stack raises.
+    """
     path = resolve_cfg_path(work_dir, token)
-    if path in redirected:
-        return
-    redirected.append(path)
+    if path in exist_stack:
+        trail = " -> ".join(str(p) for p in (*exist_stack, path))
+        raise ValueError(f"cfg_insert cycle: {trail}")
+
     data = load_toml(path)
-    if "redirect" in data:
-        if len(data) > 1:
-            print(
-                f"Warning: {path} has redirect; other keys are ignored",
-                file=sys.stderr,
-            )
-        for sub in _normalize_redirect(data["redirect"], path):
-            _expand_under_redirect(work_dir, sub, redirected, paths, cfg_dicts)
-        return
-    paths.append(path)
-    cfg_dicts.append(data)
+    exist_stack.append(path)
+    try:
+        if "cfg_insert" not in data:
+            out_paths.append(path)
+            out_cfg_dicts.append(data)
+            return
+
+        for sub in _normalize_cfg_insert(data["cfg_insert"], path):
+            _expand_cfg_token(work_dir, sub, out_paths, out_cfg_dicts, exist_stack)
+
+        rest = {k: v for k, v in data.items() if k != "cfg_insert"}
+        if rest:
+            out_paths.append(path)
+            out_cfg_dicts.append(rest)
+    finally:
+        exist_stack.pop()
 
 
 def expand_cfg_layers(
     work_dir: Path,
     tokens: list[str],
 ) -> tuple[list[Path], list[dict[str, Any]]]:
-    """Resolve cfg tokens, expand redirect files, return leaf layers.
+    """Resolve cfg tokens, expand ``cfg_insert`` lists, return flat layers.
 
-    Each top-level redirect owns a temporary redirected list. Nested redirects
-    share that list; targets already listed are skipped.
+    Each ``cfg_insert`` splices those cfgs into the layer list before the current
+    file's remaining fields. Nested ``cfg_insert`` is allowed. Cycles (re-entering
+    a path on the current expansion stack) raise ``ValueError``.
     """
     work_dir = Path(work_dir).resolve()
     paths: list[Path] = []
     cfg_dicts: list[dict[str, Any]] = []
 
     for token in tokens:
-        path = resolve_cfg_path(work_dir, token)
-        data = load_toml(path)
-        if "redirect" not in data:
-            paths.append(path)
-            cfg_dicts.append(data)
-            continue
-
-        if len(data) > 1:
-            print(
-                f"Warning: {path} has redirect; other keys are ignored",
-                file=sys.stderr,
-            )
-        redirected: list[Path] = [path]
-        for sub in _normalize_redirect(data["redirect"], path):
-            _expand_under_redirect(work_dir, sub, redirected, paths, cfg_dicts)
+        _expand_cfg_token(work_dir, token, paths, cfg_dicts)
 
     return paths, cfg_dicts
 
