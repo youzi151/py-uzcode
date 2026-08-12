@@ -23,11 +23,11 @@ def register(registry, config) -> None:
     subdir = str(opts.get("subdir") or "sent")
 
     def before_call_llm(ctx: dict[str, Any]) -> dict[str, Any]:
-        request = ctx.get("request")
+        session = ctx.get("session")
         llm_request = ctx.get("llm_request")
-        if request is None or not isinstance(llm_request, dict):
+        if session is None or not isinstance(llm_request, dict):
             return ctx
-        path_attr = getattr(request, "path", None)
+        path_attr = getattr(session, "path", None)
         if path_attr is None:
             return ctx
 

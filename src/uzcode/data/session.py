@@ -1,4 +1,4 @@
-"""Load and write session request TOML (full file on write-back)."""
+"""Load and write session TOML (full file on write-back)."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ class Message:
         known = {"role", "content", "ref", "name", "tool_call_id"}
         extra = {k: v for k, v in data.items() if k not in known}
         content_val = data.get("content")
-        
+
         if content_val is None:
             content = ""
         else:
@@ -62,7 +62,7 @@ def copy_session_to_bak(session_dir: str | Path, stamp: str) -> Path | None:
 
 def persist_session(
     session_dir: str | Path,
-    request: Request,
+    session: Session,
     appended: list[Message],
     *,
     stamp: str,
@@ -70,15 +70,15 @@ def persist_session(
     """Write ``diff/diff_<stamp>.toml`` and overwrite session ``session.toml``.
 
     Session file keeps authored refs / messages / messagelib; only LLM
-    assistant/tool turns are appended under ``[request].messages``.
+    assistant/tool turns are appended under ``[req].messages``.
     """
     session_dir = Path(session_dir).resolve()
-    request.write(
+    session.write(
         session_dir / "diff" / f"diff_{stamp}.toml",
         messages=appended,
         diff=True,
     )
-    request.write(session_dir / "session.toml")
+    session.write(session_dir / "session.toml")
 
 
 def _message_to_toml(msg: Message) -> dict[str, Any]:
@@ -101,8 +101,8 @@ def _message_to_toml(msg: Message) -> dict[str, Any]:
 
 
 @dataclass
-class Request:
-    """Runtime request plus session file snapshot for write-back."""
+class Session:
+    """Loaded session (``session.toml``) plus mutable messages for this run."""
 
     path: Path
     work_dir: Path
@@ -118,7 +118,7 @@ class Request:
         data: dict[str, Any],
         *,
         session_doc: dict[str, Any] | None = None,
-    ) -> Request:
+    ) -> Session:
         path = Path(path)
         work_dir = Path(work_dir).resolve()
         messages = [Message.from_dict(m) for m in data.get("messages", [])]

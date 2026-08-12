@@ -10,7 +10,7 @@ from pathlib import Path
 
 from uzcode import CodingAgent
 from uzcode.data import Config
-from uzcode.data.request import copy_session_to_bak, persist_session
+from uzcode.data.session import copy_session_to_bak, persist_session
 
 
 def _format_config(config: Config) -> str:
@@ -75,7 +75,7 @@ def _add_shared_args(parser: argparse.ArgumentParser) -> None:
         required=True,
         metavar="NAME_OR_PATH",
         help=(
-            "Config TOML layers in merge order (may include [request]). "
+            "Config TOML layers in merge order (may include [req]). "
             "session.toml from --session is appended as the last layer. "
             "Built-in name, .uzcode/cfgs/ name, or file path; .toml optional."
         ),
@@ -140,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
     agent = CodingAgent(work_dir)
 
     try:
-        config, request, meta = agent.prepare(args.cfg, args.session)
+        config, session, meta = agent.prepare(args.cfg, args.session)
     except (FileNotFoundError, ValueError, OSError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
@@ -151,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"cfg layers: {', '.join(str(p) for p in meta.cfg_paths)}")
     print(f"session: {meta.session_dir}")
     print(f"session file: {meta.session_path}")
-    print(f"request messages: {len(request.messages)}")
+    print(f"session messages: {len(session.messages)}")
     if action_names:
         mode = "action-only" if action_only else "action-then-run"
         print(f"actions ({mode}): {', '.join(action_names)}")
@@ -164,19 +164,19 @@ def main(argv: list[str] | None = None) -> int:
         registry = agent.load_registry(config)
         act_appended = []
         if action_names:
-            request, act_appended = agent.act(
-                config, request, action_names, registry=registry
+            session, act_appended = agent.act(
+                config, session, action_names, registry=registry
             )
             print(
                 f"actions done: appended {len(act_appended)} message(s); "
-                f"messages now {len(request.messages)}"
+                f"messages now {len(session.messages)}"
             )
             print()
 
         if action_only:
             appended = act_appended
         else:
-            request, appended = agent.run(config, request, registry=registry)
+            session, appended = agent.run(config, session, registry=registry)
     except (FileNotFoundError, AttributeError, ImportError, TypeError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
@@ -187,17 +187,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
-    persist_session(meta.session_dir, request, appended, stamp=stamp)
+    persist_session(meta.session_dir, session, appended, stamp=stamp)
 
     assistant = next(
-        (m for m in reversed(request.messages) if m.role == "assistant"),
+        (m for m in reversed(session.messages) if m.role == "assistant"),
         None,
     )
 
     print("=== Result ===")
     print(f"session: {meta.session_dir}")
-    print(f"wrote: {request.path}")
-    print(f"messages: {len(request.messages)}")
+    print(f"wrote: {session.path}")
+    print(f"messages: {len(session.messages)}")
     if assistant is not None:
         print(f"assistant: {_preview_content(assistant.content)!r}")
     return 0

@@ -11,7 +11,7 @@ from typing import Any, TypedDict
 import litellm
 from langgraph.graph import END, START, StateGraph
 
-from uzcode.data import Config, Message, Request
+from uzcode.data import Config, Message, Session
 from uzcode.extension.base import HookRegistry
 from uzcode.tools.registry import tool_cfg, tool_enabled, tool_permission
 
@@ -90,17 +90,22 @@ def _copy_state(state: dict[str, Any]) -> AgentState:
     }
 
 
-def _hook_ctx(
+def _mk_ctx(
     state: dict[str, Any],
     config: Config,
+    session: Session,
     *,
     tool: ToolCtx | None = None,
     error: BaseException | None = None,
 ) -> dict[str, Any]:
-    """Short-lived extension ctx. Only ``ctx["state"]`` is written back to LangGraph."""
+    """
+    Short-lived extension ctx. Only ``ctx["state"]`` is written back to LangGraph.
+    ``session`` is the run's Session (``session.toml`` path + messages).
+    """
     return {
         "state": _copy_state(state),
         "config": config,
+        "session": session,
         "tool": tool,
         "error": error,
     }
@@ -409,17 +414,26 @@ def _execute_with_retry(
     return last_error or f"Error: tool {name!r} failed"
 
 
-def _build_graph(config: Config, registry: HookRegistry, request: Request):
+def _build_graph(config: Config, registry: HookRegistry, session: Session):
+    def _mk_ctx_within(
+        state: dict[str, Any],
+        *,
+        tool: ToolCtx | None = None,
+        error: BaseException | None = None,
+    ) -> dict[str, Any]:
+        """Redirect to ``_mk_ctx`` with ``config`` and ``session``."""
+        return _mk_ctx(state, config, session, tool=tool, error=error)
+
     def handle_request(state: AgentState) -> AgentState:
-        working = _copy_state(state)
-        working["skills_enabled"] = _seed_skills_enabled(config, registry)
-        working["mentions"] = _parse_mentions(working["messages"])
-        updated = _state_update(registry.run("handle_request", _hook_ctx(working, config)))
-        _apply_mention_replacements(updated["messages"], updated["mentions"])
-        return updated
+        working_state = _copy_state(state)
+        working_state["skills_enabled"] = _seed_skills_enabled(config, registry)
+        working_state["mentions"] = _parse_mentions(working_state["messages"])
+        updated_state = _state_update(registry.run("handle_request", _mk_ctx_within(working_state)))
+        _apply_mention_replacements(updated_state["messages"], updated_state["mentions"])
+        return updated_state
 
     def before_llm(state: AgentState) -> AgentState:
-        return _state_update(registry.run("before_llm", _hook_ctx(state, config)))
+        return _state_update(registry.run("before_llm", _mk_ctx_within(state)))
 
     def call_llm(state: AgentState) -> dict[str, Any]:
         # Prefer llm.api_key in cfg; env via api_key_env is compatibility only.
@@ -456,9 +470,8 @@ def _build_graph(config: Config, registry: HookRegistry, request: Request):
             llm_request["tools"] = tools
         hook_state = _copy_state(state)
         hook_state["iteration"] = iteration
-        call_ctx = _hook_ctx(hook_state, config)
+        call_ctx = _mk_ctx_within(hook_state)
         call_ctx["llm_request"] = llm_request
-        call_ctx["request"] = request
         registry.run("before_call_llm", call_ctx)
 
         response = litellm.completion(**kwargs)
@@ -476,7 +489,7 @@ def _build_graph(config: Config, registry: HookRegistry, request: Request):
         }
 
     def after_llm(state: AgentState) -> AgentState:
-        return _state_update(registry.run("after_llm", _hook_ctx(state, config)))
+        return _state_update(registry.run("after_llm", _mk_ctx_within(state)))
 
     def run_tools(state: AgentState) -> AgentState:
         """Execute each tool_call; finish the full batch even if stop_loop is set.
@@ -552,7 +565,7 @@ def _build_graph(config: Config, registry: HookRegistry, request: Request):
                     else None
                 ),
             }
-            ctx = _hook_ctx(working, config, tool=tool)
+            ctx = _mk_ctx_within(working, tool=tool)
             ctx = registry.run("before_tool", ctx)
             tool = ctx["tool"]
 
@@ -601,7 +614,7 @@ def _build_graph(config: Config, registry: HookRegistry, request: Request):
         Extensions may set ``state["stop_loop"]=True`` to end the agent loop
         after this turn (not to skip remaining tool_calls).
         """
-        return _state_update(registry.run("after_tools", _hook_ctx(state, config)))
+        return _state_update(registry.run("after_tools", _mk_ctx_within(state)))
 
     def route_after_tools(state: AgentState) -> str:
         """Continue only when auto_loop is on, under max_iterations, and last
@@ -631,6 +644,16 @@ def _build_graph(config: Config, registry: HookRegistry, request: Request):
                 return "end"
         return "end"
 
+    def route_after_handle_request(state: AgentState) -> str:
+        """Allow handle_request to end the run (e.g. unresolved sub_agent pending)."""
+        if state.get("stop_loop"):
+            print(
+                "Stopping: stop_loop set during handle_request",
+                file=sys.stderr,
+            )
+            return "end"
+        return "before_llm"
+
     graph = StateGraph(AgentState)
     graph.add_node("handle_request", handle_request)
     graph.add_node("before_llm", before_llm)
@@ -639,7 +662,11 @@ def _build_graph(config: Config, registry: HookRegistry, request: Request):
     graph.add_node("run_tools", run_tools)
     graph.add_node("after_tools", after_tools)
     graph.add_edge(START, "handle_request")
-    graph.add_edge("handle_request", "before_llm")
+    graph.add_conditional_edges(
+        "handle_request",
+        route_after_handle_request,
+        {"before_llm": "before_llm", "end": END},
+    )
     graph.add_edge("before_llm", "call_llm")
     graph.add_edge("call_llm", "after_llm")
     graph.add_edge("after_llm", "run_tools")
@@ -654,21 +681,22 @@ def _build_graph(config: Config, registry: HookRegistry, request: Request):
 
 def run(
     config: Config,
-    request: Request,
+    session: Session,
     *,
     registry: HookRegistry | None = None,
-) -> tuple[Request, list[Message]]:
-    """Run LLM ↔ tools loop; return session messages with LLM/tool turns appended.
+) -> tuple[Session, list[Message]]:
+    """Run LLM ↔ tools loop; return session messages with this run's turns appended.
 
-    Keeps session ``session.toml`` messages (including ``ref``) intact; only
-    assistant/tool turns from this run are appended. ``messagelib`` refs are
-    resolved after ``before_llm`` for the API only. No disk I/O.
+    Base messages (including prior assistant/tool turns) are taken from the final
+    graph state so in-place mutations (e.g. sub_agent pending hydration) persist.
+    Only newly appended assistant/tool turns are returned as ``appended``.
+    ``messagelib`` refs are resolved after ``before_llm`` for the API only.
+    No disk I/O.
     """
     reg = registry if registry is not None else HookRegistry()
-    graph = _build_graph(config, reg, request)
+    graph = _build_graph(config, reg, session)
 
-    session_base = request.session_messages()
-    messages = _messages_to_dicts(request.messages)
+    messages = _messages_to_dicts(session.messages)
     base_len = len(messages)
     initial: AgentState = {
         "messages": messages,
@@ -683,10 +711,11 @@ def run(
     }
     try:
         result = graph.invoke(initial)
-        ctx = reg.run("on_result", _hook_ctx(result, config))
+        ctx = reg.run("on_result", _mk_ctx(result, config, session))
         final = _state_update(ctx)
     except Exception as exc:
-        err_ctx = _hook_ctx(
+        err_ctx = _mk_ctx(
+            # state
             {
                 "messages": messages,
                 "messagelib": _copy_messagelib(
@@ -701,6 +730,7 @@ def run(
                 "extra": {},
             },
             config,
+            session,
             error=exc,
         )
         try:
@@ -709,9 +739,12 @@ def run(
             pass
         raise
 
-    new_msgs = (final.get("messages") or [])[base_len:]
+    final_msgs = final.get("messages") or []
+    # Include in-place base mutations (e.g. sub_agent pending hydration).
+    base_out = [Message.from_dict(m) for m in final_msgs[:base_len]]
+    new_msgs = final_msgs[base_len:]
     appended = [
         Message.from_dict(m) for m in _assistant_tool_for_persist(new_msgs)
     ]
-    request.messages = session_base + appended
-    return request, appended
+    session.messages = base_out + appended
+    return session, appended

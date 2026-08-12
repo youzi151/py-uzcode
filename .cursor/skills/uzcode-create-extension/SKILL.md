@@ -71,7 +71,7 @@ Engine writes back **only** `ctx["state"]`. `config` / `tool` / `error` never en
 |------|------|-------------|
 | `handle_request` | Once at start | mentions, seed skills, mutate request state |
 | `before_llm` | Before each LLM call | preprocess messages, inject context |
-| `before_call_llm` | After kwargs built, before send | audit/export `ctx["llm_request"]` (no `api_key`); `ctx["request"]` set |
+| `before_call_llm` | After kwargs built, before send | audit/export `ctx["llm_request"]` (no `api_key`); `ctx["session"]` set |
 | `after_llm` | After assistant message appended | log, transform response |
 | `before_tool` | Per tool call, before execute | preview, custom permission (`ctx["tool"]`) |
 | `after_tool` | Per tool call, after execute/skip | rewrite `tool.result`, audit; may set `state.stop_loop` |
@@ -100,11 +100,11 @@ ctx = {
         "extra": {},           # ext-owned scratch (not Message.extra)
     },
     "config": Config,
+    "session": Session,         # session.toml path via session.path
     "tool": ToolCtx | None,    # set for before_tool / after_tool / handlers
     "error": Exception | None, # set for on_error only
     # before_call_llm only:
     # "llm_request": {...},    # exportable LiteLLM kwargs (no api_key)
-    # "request": Request,      # session path via request.path
 }
 ```
 
@@ -161,9 +161,9 @@ Actions are CLI/API side-effects run **after** `prepare`, **before** an optional
 
 ```python
 def my_action(ctx: dict) -> dict:
-    # ctx: config, request, registry, action, appended (list)
-    request = ctx["request"]
-    # mutate request.messages; append new Message objects to ctx["appended"]
+    # ctx: config, session, registry, action, appended (list)
+    session = ctx["session"]
+    # mutate session.messages; append new Message objects to ctx["appended"]
     return ctx
 
 registry.action("my-action", my_action, order=10)

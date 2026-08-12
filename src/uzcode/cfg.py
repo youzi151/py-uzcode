@@ -1,4 +1,4 @@
-"""Resolve cfg / session paths, expand layers, and prepare Config + Request."""
+"""Resolve cfg / session paths, expand layers, and prepare Config + Session."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from typing import Any
 from overdict import merge
 
 import uzcode
-from uzcode.data import Config, Request
+from uzcode.data import Config, Session
 
 _SESSION_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
@@ -174,11 +174,11 @@ def prepare(
     work_dir: str | Path,
     cfg_tokens: list[str],
     session: str,
-) -> tuple[Config, Request, PrepareMeta]:
+) -> tuple[Config, Session, PrepareMeta]:
     """Collect cfg layers with session ``session.toml`` as the last layer.
 
     ``session.toml`` is treated as a normal cfg file (may contribute
-    ``[request]`` via overdict merge with earlier ``--cfg`` layers).
+    ``[req]`` via overdict merge with earlier ``--cfg`` layers).
     """
     work_dir = Path(work_dir).resolve()
     session_dir = resolve_session_dir(work_dir, session)
@@ -202,7 +202,7 @@ def prepare(
         req_raw = {}
 
     config = Config.from_dict(work_dir, merged)
-    request = Request.from_dict(
+    session_obj = Session.from_dict(
         session_path,
         work_dir,
         req_raw,
@@ -213,4 +213,4 @@ def prepare(
         session_path=session_path,
         cfg_paths=paths,
     )
-    return config, request, meta
+    return config, session_obj, meta

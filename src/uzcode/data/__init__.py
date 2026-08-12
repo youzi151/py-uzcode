@@ -1,6 +1,6 @@
-"""Config and request data types."""
+"""Config and session data types."""
 
 from uzcode.data.config import Config, LLMConfig, LoopConfig
-from uzcode.data.request import Message, Request
+from uzcode.data.session import Message, Session
 
-__all__ = ["Config", "LLMConfig", "LoopConfig", "Message", "Request"]
+__all__ = ["Config", "LLMConfig", "LoopConfig", "Message", "Session"]

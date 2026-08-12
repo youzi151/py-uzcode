@@ -106,13 +106,13 @@ def _detect_changes(
 
 
 def _run_file_action(ctx: dict[str, Any], *, clear_content: bool) -> dict[str, Any]:
-    request = ctx.get("request")
+    session = ctx.get("session")
     config = ctx.get("config")
-    if request is None or config is None:
-        raise ValueError("file_cru action requires ctx['request'] and ctx['config']")
+    if session is None or config is None:
+        raise ValueError("file_cru action requires ctx['session'] and ctx['config']")
 
     work_dir = Path(getattr(config, "work_dir"))
-    messages: list[Message] = list(request.messages)
+    messages: list[Message] = list(session.messages)
     changes = _detect_changes(messages, work_dir)
     appended: list[Message] = []
 
@@ -124,8 +124,8 @@ def _run_file_action(ctx: dict[str, Any], *, clear_content: bool) -> dict[str, A
         messages.extend(pair)
         appended.extend(pair)
 
-    request.messages = messages
-    ctx["request"] = request
+    session.messages = messages
+    ctx["session"] = session
     prior = ctx.get("appended")
     if isinstance(prior, list):
         ctx["appended"] = list(prior) + appended
