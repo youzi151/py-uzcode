@@ -9,6 +9,7 @@ import sys
 from typing import Any, TypedDict
 
 import litellm
+
 from langgraph.graph import END, START, StateGraph
 
 from uzcode.data import Config, Message, Session
@@ -18,6 +19,7 @@ from uzcode.cfg import PrepareMeta
 
 _MENTION_RE = re.compile(r"@\{([^}:]+):([^}]*)\}")
 
+_GEMINI_DUMMY_THOUGHT_SIGNATURE = "skip_thought_signature_validator"
 
 def _ask_user_yn(tool_name: str, arguments: dict[str, Any]) -> bool:
     """Prompt on stderr/stdin: Enter or Y = yes, n = no."""
@@ -265,6 +267,10 @@ def _api_message(msg: dict[str, Any]) -> dict[str, Any]:
         out["tool_call_id"] = msg["tool_call_id"]
     if "tool_calls" in msg:
         out["tool_calls"] = msg["tool_calls"]
+    if "extra_content" in msg:
+        out["extra_content"] = msg["extra_content"]
+    if "provider_specific_fields" in msg:
+        out["provider_specific_fields"] = msg["provider_specific_fields"]
     return out
 
 
@@ -343,6 +349,7 @@ def _litellm_model(model: str) -> str:
         "anthropic/",
         "bedrock/",
         "gemini/",
+        "vertex_ai/",
         "ollama/",
     )
     if model.startswith(known_prefixes):
@@ -350,10 +357,21 @@ def _litellm_model(model: str) -> str:
     return f"openai/{model}"
 
 
+def _plain_mapping(value: Any) -> dict[str, Any] | None:
+    """JSON-able dict with Nones stripped, or None if empty / not a mapping."""
+    if value is None:
+        return None
+    converted = _to_jsonable(value, omit_empty=True)
+    if isinstance(converted, dict) and converted:
+        return converted
+    return None
+
+
 def _tool_call_to_dict(tc: Any) -> dict[str, Any]:
     """Normalize a LiteLLM / OpenAI tool_call object to a plain dict."""
     if isinstance(tc, dict):
-        return tc
+        cleaned = _to_jsonable(tc, omit_empty=True)
+        return cleaned if isinstance(cleaned, dict) else {}
     fn = getattr(tc, "function", None)
     function: dict[str, Any]
     if isinstance(fn, dict):
@@ -368,11 +386,73 @@ def _tool_call_to_dict(tc: Any) -> dict[str, Any]:
         }
     else:
         function = {"name": "", "arguments": ""}
-    return {
+    out: dict[str, Any] = {
         "id": getattr(tc, "id", None) or "",
         "type": getattr(tc, "type", None) or "function",
         "function": function,
     }
+    extra_content = _plain_mapping(getattr(tc, "extra_content", None))
+    if extra_content is not None:
+        out["extra_content"] = extra_content
+    provider_fields = _plain_mapping(getattr(tc, "provider_specific_fields", None))
+    if provider_fields is not None:
+        out["provider_specific_fields"] = provider_fields
+    return out
+
+def _thought_signature_from_tool_call(tc: dict[str, Any]) -> str | None:
+    extra = tc.get("extra_content")
+    if isinstance(extra, dict):
+        google = extra.get("google")
+        if isinstance(google, dict):
+            sig = google.get("thought_signature")
+            if isinstance(sig, str) and sig:
+                return sig
+    psf = tc.get("provider_specific_fields")
+    if isinstance(psf, dict):
+        sig = psf.get("thought_signature")
+        if isinstance(sig, str) and sig:
+            return sig
+        sigs = psf.get("thought_signatures")
+        if isinstance(sigs, str) and sigs:
+            return sigs
+        if isinstance(sigs, list) and sigs:
+            first = sigs[0]
+            if isinstance(first, str) and first:
+                return first
+    return None
+
+
+def _ensure_gemini_thought_signatures(
+    messages: list[dict[str, Any]], model: str = ""
+) -> list[dict[str, Any]]:
+    """Copy messages; on Gemini, attach dummy thought_signature when missing.
+
+    Does not mutate ``messages`` or nested ``tool_calls``. Dummy is send-time
+    only; stored signatures from session / prior LLM turns are kept.
+    """
+
+    out: list[dict[str, Any]] = []
+    for msg in messages:
+        copied = dict(msg)
+        raw_calls = copied.get("tool_calls")
+        if not raw_calls:
+            out.append(copied)
+            continue
+        new_calls: list[dict[str, Any]] = []
+        for tc in raw_calls:
+            tc_dict = dict(tc) if isinstance(tc, dict) else _tool_call_to_dict(tc)
+            if _thought_signature_from_tool_call(tc_dict) is None:
+                extra_raw = tc_dict.get("extra_content")
+                extra = dict(extra_raw) if isinstance(extra_raw, dict) else {}
+                google_raw = extra.get("google")
+                google = dict(google_raw) if isinstance(google_raw, dict) else {}
+                google["thought_signature"] = _GEMINI_DUMMY_THOUGHT_SIGNATURE
+                extra["google"] = google
+                tc_dict["extra_content"] = extra
+            new_calls.append(tc_dict)
+        copied["tool_calls"] = new_calls
+        out.append(copied)
+    return out
 
 
 def _parse_arguments(raw: Any) -> dict[str, Any]:
@@ -476,30 +556,10 @@ def _pick_int(*candidates: Any) -> int:
 def usage_for_session(usage: Any) -> dict[str, Any]:
     """Last-call usage for ``[resp.usage]``: provider fields plus flattened cache ints."""
     data = _to_jsonable(usage, omit_empty=True)
-    if not isinstance(data, dict):
-        data = {}
-    details = data.get("prompt_tokens_details")
-    if not isinstance(details, dict):
-        details = {}
-    completion_details = data.get("completion_tokens_details")
-    if not isinstance(completion_details, dict):
-        completion_details = {}
-
-    data["cached_tokens"] = _pick_int(
-        details.get("cached_tokens"),
-        data.get("cache_read_input_tokens"),
-    )
-    data["cache_read_tokens"] = _pick_int(
-        data.get("cache_read_input_tokens"),
-        details.get("cached_tokens"),
-    )
-    data["cache_write_tokens"] = _pick_int(
-        data.get("cache_creation_input_tokens"),
-        details.get("cache_write_tokens"),
-        details.get("cache_creation_tokens"),
-    )
-    data["reasoning_tokens"] = _pick_int(completion_details.get("reasoning_tokens"))
-    return data
+    if not isinstance(data, dict): return None
+    return {
+        "total_tokens": data.get("total_tokens")
+    }
 
 
 def _build_graph(
@@ -547,13 +607,18 @@ def _build_graph(
                 f"or environment variable {config.llm.api_key_env!r}"
             )
         iteration = int(state.get("iteration", 0)) + 1
+        model = _litellm_model(config.llm.model)
         api_messages = _llm_messages(state)
+
+        if model.startswith(("gemini/", "vertex_ai/")):
+            api_messages = _ensure_gemini_thought_signatures(api_messages, model)
+
         print(
             f"Calling LLM (iteration={iteration}) with messages={api_messages}",
             file=sys.stderr,
         )
         kwargs: dict[str, Any] = {
-            "model": _litellm_model(config.llm.model),
+            "model": model,
             "messages": api_messages,
             "api_key": api_key,
             "api_base": config.llm.base_url,
@@ -582,7 +647,8 @@ def _build_graph(
         usage = getattr(response, "usage", None)
         if usage is None:
             usage = last_llm_response.get("usage")
-        session.session_doc["resp"] = {"usage": usage_for_session(usage)}
+        usage = usage_for_session(usage)
+        session.session_doc["resp"] = {"usage": usage}
 
         choice = response.choices[0].message
         content = getattr(choice, "content", None) or ""
@@ -591,6 +657,14 @@ def _build_graph(
         raw_calls = getattr(choice, "tool_calls", None)
         if raw_calls:
             assistant["tool_calls"] = [_tool_call_to_dict(tc) for tc in raw_calls]
+        extra_content = _plain_mapping(getattr(choice, "extra_content", None))
+        if extra_content is not None:
+            assistant["extra_content"] = extra_content
+        provider_fields = _plain_mapping(
+            getattr(choice, "provider_specific_fields", None)
+        )
+        if provider_fields is not None:
+            assistant["provider_specific_fields"] = provider_fields
 
         return {
             "messages": [*state["messages"], assistant],

@@ -83,6 +83,12 @@ def _add_shared_args(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--debug-litellm",
+        action="store_true",
+        default=False,
+        help="Turn on debug mode for LiteLLM (default: False)",
+    )
+    parser.add_argument(
         "--session",
         required=True,
         metavar="NAME",
@@ -130,6 +136,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
+
     action_only = bool(raw) and raw[0] == "act"
     if action_only:
         args = build_act_parser().parse_args(raw[1:])
@@ -137,6 +144,12 @@ def main(argv: list[str] | None = None) -> int:
     else:
         args = build_run_parser().parse_args(raw)
         action_names = list(args.act or [])
+
+    if args.debug_litellm:
+        import litellm
+        print("Turning on LiteLLM debug mode")
+        litellm._turn_on_debug()
+        print("LiteLLM debug mode turned on")
 
     work_dir = Path(args.workdir).resolve()
     agent = CodingAgent(work_dir)

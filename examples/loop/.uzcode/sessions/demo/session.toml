@@ -2,5 +2,8 @@
 ref = "__system"
 
 [[req.messages]]
+ref = "__skill"
+
+[[req.messages]]
 role = "user"
 content = "must run shell \"ls -a\" at cwd first to check files. then find the text file include email address, write \"[\"{file_name}:{email}\", \"{file_name}:{email}\", ...]\" as array to ./result.json"

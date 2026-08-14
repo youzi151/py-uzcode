@@ -81,6 +81,15 @@ def persist_session(
     session.write(session_dir / "session.toml")
 
 
+def _drop_nones(value: Any) -> Any:
+    """Strip None so tomli_w can serialize LiteLLM extra fields."""
+    if isinstance(value, dict):
+        return {k: _drop_nones(v) for k, v in value.items() if v is not None}
+    if isinstance(value, list):
+        return [_drop_nones(v) for v in value if v is not None]
+    return value
+
+
 def _message_to_toml(msg: Message) -> dict[str, Any]:
     entry: dict[str, Any] = {}
     if msg.ref is not None:
@@ -97,7 +106,7 @@ def _message_to_toml(msg: Message) -> dict[str, Any]:
     if msg.tool_call_id is not None:
         entry["tool_call_id"] = msg.tool_call_id
     entry.update(msg.extra)
-    return entry
+    return _drop_nones(entry)
 
 
 @dataclass
