@@ -158,7 +158,8 @@ class Session:
         """Write session TOML.
 
         Full write: entire ``session_doc`` with ``[req].messages`` updated.
-        Diff write: only ``[req].messages`` (appended turns).
+        ``resp`` (last-call ``[resp.usage]``) is emitted last. Diff write: only
+        ``[req].messages`` (appended turns).
         """
         out = Path(path or self.path)
         if not out.is_absolute():
@@ -173,9 +174,12 @@ class Session:
             payload: dict[str, Any] = {"req": {"messages": serialized}}
         else:
             payload = dict(self.session_doc)
+            resp = payload.pop("resp", None)
             req_body = dict(payload.get("req") or {})
             req_body["messages"] = serialized
             payload["req"] = req_body
+            if resp is not None:
+                payload["resp"] = resp
 
         text = tomli_w.dumps(payload).rstrip() + "\n"
         out.parent.mkdir(parents=True, exist_ok=True)

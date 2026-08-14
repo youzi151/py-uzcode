@@ -418,12 +418,98 @@ def _execute_with_retry(
     return last_error or f"Error: tool {name!r} failed"
 
 
+def _to_jsonable(value: Any, *, omit_empty: bool = False) -> Any:
+    """Convert LiteLLM / pydantic values to JSON-safe structures."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if hasattr(value, "model_dump") and callable(value.model_dump):
+        try:
+            dumped = value.model_dump(mode="json")
+        except TypeError:
+            dumped = value.model_dump()
+        return _to_jsonable(dumped, omit_empty=omit_empty)
+    if hasattr(value, "dict") and callable(value.dict):
+        try:
+            dumped = value.dict()
+        except TypeError:
+            dumped = None
+        if dumped is not None:
+            return _to_jsonable(dumped, omit_empty=omit_empty)
+    if isinstance(value, dict):
+        out: dict[str, Any] = {}
+        for key, item in value.items():
+            if key == "api_key":
+                continue
+            converted = _to_jsonable(item, omit_empty=omit_empty)
+            if omit_empty and converted in (None, {}, []):
+                continue
+            out[str(key)] = converted
+        return out
+    if isinstance(value, (list, tuple)):
+        items = [_to_jsonable(item, omit_empty=omit_empty) for item in value]
+        if omit_empty:
+            items = [item for item in items if item not in (None, {}, [])]
+        return items
+    return str(value)
+
+
+def _serialize_llm_response(response: Any) -> dict[str, Any]:
+    data = _to_jsonable(response)
+    if not isinstance(data, dict):
+        return {}
+    data.pop("api_key", None)
+    return data
+
+
+def _pick_int(*candidates: Any) -> int:
+    """First non-None value that converts to int, else 0."""
+    for value in candidates:
+        if value is None:
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
+    return 0
+
+
+def usage_for_session(usage: Any) -> dict[str, Any]:
+    """Last-call usage for ``[resp.usage]``: provider fields plus flattened cache ints."""
+    data = _to_jsonable(usage, omit_empty=True)
+    if not isinstance(data, dict):
+        data = {}
+    details = data.get("prompt_tokens_details")
+    if not isinstance(details, dict):
+        details = {}
+    completion_details = data.get("completion_tokens_details")
+    if not isinstance(completion_details, dict):
+        completion_details = {}
+
+    data["cached_tokens"] = _pick_int(
+        details.get("cached_tokens"),
+        data.get("cache_read_input_tokens"),
+    )
+    data["cache_read_tokens"] = _pick_int(
+        data.get("cache_read_input_tokens"),
+        details.get("cached_tokens"),
+    )
+    data["cache_write_tokens"] = _pick_int(
+        data.get("cache_creation_input_tokens"),
+        details.get("cache_write_tokens"),
+        details.get("cache_creation_tokens"),
+    )
+    data["reasoning_tokens"] = _pick_int(completion_details.get("reasoning_tokens"))
+    return data
+
+
 def _build_graph(
     config: Config,
     registry: HookRegistry,
     session: Session,
     prepare_meta: PrepareMeta | None = None,
 ):
+    last_llm_response: dict[str, Any] | None = None
+
     def _mk_ctx_within(
         state: dict[str, Any],
         *,
@@ -452,6 +538,7 @@ def _build_graph(
         return _state_update(registry.run("before_llm", _mk_ctx_within(state)))
 
     def call_llm(state: AgentState) -> dict[str, Any]:
+        nonlocal last_llm_response
         # Prefer llm.api_key in cfg; env via api_key_env is compatibility only.
         api_key = config.llm.api_key or os.environ.get(config.llm.api_key_env)
         if not api_key:
@@ -491,6 +578,12 @@ def _build_graph(
         registry.run("before_call_llm", call_ctx)
 
         response = litellm.completion(**kwargs)
+        last_llm_response = _serialize_llm_response(response)
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            usage = last_llm_response.get("usage")
+        session.session_doc["resp"] = {"usage": usage_for_session(usage)}
+
         choice = response.choices[0].message
         content = getattr(choice, "content", None) or ""
         assistant = _new_text_message("assistant", content)
@@ -505,7 +598,10 @@ def _build_graph(
         }
 
     def after_llm(state: AgentState) -> AgentState:
-        return _state_update(registry.run("after_llm", _mk_ctx_within(state)))
+        ctx = _mk_ctx_within(state)
+        if last_llm_response is not None:
+            ctx["llm_response"] = last_llm_response
+        return _state_update(registry.run("after_llm", ctx))
 
     def run_tools(state: AgentState) -> AgentState:
         """Execute each tool_call; finish the full batch even if stop_loop is set.
