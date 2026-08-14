@@ -81,6 +81,7 @@ class CodingAgent:
         config: Config,
         session: Session,
         *,
+        prepare_meta: PrepareMeta | None = None,
         registry: HookRegistry | None = None,
     ) -> tuple[Session, list[Message]]:
         """Run the agent loop. Returns session messages with this run's turns appended.
@@ -88,4 +89,6 @@ class CodingAgent:
         Session refs/messages are preserved; only assistant/tool turns are appended.
         """
         reg = registry if registry is not None else self.load_registry(config)
-        return engine.run(config, session, registry=reg)
+        return engine.run(
+            config, session, registry=reg, prepare_meta=prepare_meta
+        )

@@ -1,0 +1,26 @@
+# Minimal sub_agent example cfg (enable the extension explicitly).
+# Usage sketch:
+#   1) Main: uzcode --workdir . --cfg local --session main
+#      → tool sub_agent creates sessions/<sub>/session.toml
+#        with cfg_insert = ["local", "subagent"]
+#   2) Edit sessions/<sub>/session.toml if needed
+#   3) Run sub: uzcode --workdir . --session <sub>
+#   4) Sub calls sub_agent_done → result.json
+#   5) Re-run main → pending hydrates from result.json
+#
+# Optional: replace the inherit list entirely:
+# [exts.sub_agent]
+# cfg_insert = ["base", "subagent"]
+
+[messagelib.__system]
+role = "system"
+content = "You are a coding agent. Use sub_agent to delegate focused work."
+
+[extension]
+enable = ["logging", "sub_agent", "file_cru", "shell", "task_summary"]
+
+[tools.sub_agent]
+permission = "ask"
+
+[tools.sub_agent_done]
+permission = "approve"

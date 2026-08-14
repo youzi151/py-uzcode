@@ -11,6 +11,9 @@ content = "You are a coding agent. Be concise and helpful."
 role = "system"
 content = ""
 
+[tools.sub_agent_done]
+enable = false
+
 [extension]
 enable = ["logging", "llm_sent"]
 [extension.__merge]

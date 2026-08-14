@@ -23,7 +23,7 @@ on_failure = "abort"
 permission = "approve"
 
 [extension]
-enable = ["file_cru", "task_summary", "shell"]
+enable = ["file_cru", "task_summary", "shell", "sub_agent"]
 [extension.__merge]
 enable = "after"
 

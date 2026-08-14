@@ -71,13 +71,15 @@ def _add_shared_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--cfg",
-        nargs="+",
-        required=True,
+        nargs="*",
+        default=None,
         metavar="NAME_OR_PATH",
         help=(
             "Config TOML layers in merge order (may include [req]). "
-            "session.toml from --session is appended as the last layer. "
-            "Built-in name, .uzcode/cfgs/ name, or file path; .toml optional."
+            "Optional: if omitted, session.toml (including cfg_insert) is "
+            "the whole stack. session.toml from --session is always appended "
+            "as the last layer. Built-in name, .uzcode/cfgs/ name, or file "
+            "path; .toml optional."
         ),
     )
     parser.add_argument(
@@ -140,7 +142,9 @@ def main(argv: list[str] | None = None) -> int:
     agent = CodingAgent(work_dir)
 
     try:
-        config, session, meta = agent.prepare(args.cfg, args.session)
+        config, session, meta = agent.prepare(
+            list(args.cfg or []), args.session
+        )
     except (FileNotFoundError, ValueError, OSError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
@@ -176,7 +180,9 @@ def main(argv: list[str] | None = None) -> int:
         if action_only:
             appended = act_appended
         else:
-            session, appended = agent.run(config, session, registry=registry)
+            session, appended = agent.run(
+                config, session, registry=registry, prepare_meta=meta
+            )
     except (FileNotFoundError, AttributeError, ImportError, TypeError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1

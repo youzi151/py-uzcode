@@ -163,11 +163,12 @@ def expand_cfg_layers(
 
 @dataclass(frozen=True)
 class PrepareMeta:
-    """Metadata from cfg.prepare for CLI preview / persist."""
+    """Metadata from cfg.prepare for CLI preview / persist / extensions."""
 
     session_dir: Path
     session_path: Path
     cfg_paths: list[Path]
+    cfg_raw_inputs: list[str]
 
 
 def prepare(
@@ -212,5 +213,6 @@ def prepare(
         session_dir=session_dir,
         session_path=session_path,
         cfg_paths=paths,
+        cfg_raw_inputs=list(cfg_tokens),
     )
     return config, session_obj, meta

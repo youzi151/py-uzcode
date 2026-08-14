@@ -36,6 +36,8 @@ def _discover_names(*roots: Path) -> list[str]:
         if not root.is_dir():
             continue
         for child in root.iterdir():
+            if child.name in names:
+                continue
             if child.name.startswith("_") or child.name.startswith("."):
                 continue
             if child.is_dir() and (child / "__init__.py").is_file():
@@ -90,6 +92,8 @@ def load_extensions(work_dir: Path | str, config: Config) -> HookRegistry:
     if enable is not None:
         if not isinstance(enable, list):
             raise TypeError("extension.enable must be a list of extension names")
+        # make sure each enable name is unique
+        enable = list(set(enable))
         enable_names = [str(n) for n in enable]
         missing = [n for n in enable_names if n not in discovered]
         if missing:

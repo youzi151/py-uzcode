@@ -1,0 +1,3 @@
+[[req.messages]]
+role = "user"
+content = "Delegate a one-line summary of this repo's purpose to a sub-agent session named demo_sub, then report what it returned."

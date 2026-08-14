@@ -14,6 +14,7 @@ from langgraph.graph import END, START, StateGraph
 from uzcode.data import Config, Message, Session
 from uzcode.extension.base import HookRegistry
 from uzcode.tools.registry import tool_cfg, tool_enabled, tool_permission
+from uzcode.cfg import PrepareMeta
 
 _MENTION_RE = re.compile(r"@\{([^}:]+):([^}]*)\}")
 
@@ -97,15 +98,18 @@ def _mk_ctx(
     *,
     tool: ToolCtx | None = None,
     error: BaseException | None = None,
+    prepare_meta: PrepareMeta | None = None,
 ) -> dict[str, Any]:
     """
     Short-lived extension ctx. Only ``ctx["state"]`` is written back to LangGraph.
     ``session`` is the run's Session (``session.toml`` path + messages).
+    ``preparemeta`` is immutable prepare metadata (CLI --cfg tokens, paths).
     """
     return {
         "state": _copy_state(state),
         "config": config,
         "session": session,
+        "preparemeta": prepare_meta,
         "tool": tool,
         "error": error,
     }
@@ -414,15 +418,27 @@ def _execute_with_retry(
     return last_error or f"Error: tool {name!r} failed"
 
 
-def _build_graph(config: Config, registry: HookRegistry, session: Session):
+def _build_graph(
+    config: Config,
+    registry: HookRegistry,
+    session: Session,
+    prepare_meta: PrepareMeta | None = None,
+):
     def _mk_ctx_within(
         state: dict[str, Any],
         *,
         tool: ToolCtx | None = None,
         error: BaseException | None = None,
     ) -> dict[str, Any]:
-        """Redirect to ``_mk_ctx`` with ``config`` and ``session``."""
-        return _mk_ctx(state, config, session, tool=tool, error=error)
+        """Redirect to ``_mk_ctx`` with ``config``, ``session``, ``preparemeta``."""
+        return _mk_ctx(
+            state,
+            config,
+            session,
+            tool=tool,
+            error=error,
+            prepare_meta=prepare_meta,
+        )
 
     def handle_request(state: AgentState) -> AgentState:
         working_state = _copy_state(state)
@@ -684,6 +700,7 @@ def run(
     session: Session,
     *,
     registry: HookRegistry | None = None,
+    prepare_meta: PrepareMeta | None = None,
 ) -> tuple[Session, list[Message]]:
     """Run LLM ↔ tools loop; return session messages with this run's turns appended.
 
@@ -694,7 +711,7 @@ def run(
     No disk I/O.
     """
     reg = registry if registry is not None else HookRegistry()
-    graph = _build_graph(config, reg, session)
+    graph = _build_graph(config, reg, session, prepare_meta)
 
     messages = _messages_to_dicts(session.messages)
     base_len = len(messages)
@@ -711,7 +728,10 @@ def run(
     }
     try:
         result = graph.invoke(initial)
-        ctx = reg.run("on_result", _mk_ctx(result, config, session))
+        ctx = reg.run(
+            "on_result",
+            _mk_ctx(result, config, session, prepare_meta=prepare_meta),
+        )
         final = _state_update(ctx)
     except Exception as exc:
         err_ctx = _mk_ctx(
@@ -732,6 +752,7 @@ def run(
             config,
             session,
             error=exc,
+            prepare_meta=prepare_meta,
         )
         try:
             reg.run("on_error", err_ctx)
