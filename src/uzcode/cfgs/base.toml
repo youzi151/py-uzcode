@@ -15,6 +15,6 @@ content = ""
 enable = false
 
 [extension]
-enable = ["logging", "llm_sent"]
+enable = ["logging", "llm_log"]
 [extension.__merge]
 enable = "after"
