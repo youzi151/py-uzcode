@@ -1,7 +1,7 @@
 [project]
 name = "uzcode"
 version = "0.1.0"
-description = "A minimal, stateless AI coding agent"
+description = "Minimal AI coding agent — no hidden memory; cfg and session are the state"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

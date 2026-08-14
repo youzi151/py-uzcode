@@ -230,7 +230,7 @@ enable = ["sub_agent", ...]   # 或省略 = 載入全部內建／專案 exts
 
 | idea_begin | 本設計 |
 |------------|--------|
-| Stateless／完整 session | 子任務也是完整 session 檔 |
+| 無隱藏狀態／完整 session | 子任務也是完整 session 檔 |
 | 使用者可手改 request | 跑前改子 `session.toml` |
 | 進階行為靠 extension | `sub_agent` ext，不肥核心 |
 | Debug／fork／replay | pending、result、messages 皆可重放 |

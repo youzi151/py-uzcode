@@ -1,4 +1,4 @@
-"""uzcode — a minimal, stateless AI coding agent."""
+"""uzcode — a minimal AI coding agent with no hidden memory."""
 
 from __future__ import annotations
 

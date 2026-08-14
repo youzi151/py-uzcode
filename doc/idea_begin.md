@@ -1,10 +1,10 @@
 ﻿# uzcode
 
-一個極簡、stateless 的 AI coding agent，以純 Python 實作，強調**使用者完全控制權**與**可擴充性**。
+一個極簡的 AI coding agent，以純 Python 實作：引擎無行程狀態，對話與政策都在可編輯的 TOML，強調**使用者完全控制權**與**可擴充性**。
 
 ## 設計理念
 
-- **Stateless 第一**：每次執行都基於完整的 `session.toml`，無隱藏狀態。
+- **無隱藏狀態**：每次執行由 cfg 疊層 + 完整 `session.toml` 重建；引擎不保留行程記憶。
 - **使用者主導**：使用者可以任意修改歷史訊息、tool results、甚至 AI 之前的回應。
 - **極簡核心**：骨幹保持最小，只負責必要流程。
 - **高度可擴充**：所有進階行為（diff preview、logging、權限、多模型轉換等）都透過 extension 實現。
@@ -121,7 +121,7 @@ agent = CodingAgent(work_dir="./myproject")
 
 ## 為什麼 uzcode？
 
-與 Aider、OpenHands 等工具相比，uzcode 更專注在**透明度**、**可控性**與**極簡**，適合希望完全掌握每一步、並能輕鬆 debug / replay 的開發者。
+與其他Agent相比，uzcode 更專注在**透明度**、**可控性**與**極簡**，適合希望完全掌握每一步、並能輕鬆 debug / replay 的開發者。
 
 ---
 

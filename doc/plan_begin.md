@@ -7,12 +7,12 @@
 
 ## 1. 目標與原則
 
-打造一個**極簡、stateless** 的 AI coding agent（純 Python），讓使用者完全掌握每一次請求與回應。
+打造一個**極簡**的 AI coding agent（純 Python）：引擎無行程狀態，狀態都在可手改的 cfg / session，讓使用者完全掌握每一次請求與回應。
 
 
 | 原則           | 含義                                             |
 | ------------ | ---------------------------------------------- |
-| Stateless 第一 | 每次執行只依 session `session.toml`，無隱藏狀態               |
+| 無隱藏狀態        | 每次執行由 cfg 疊層 + `session.toml` 重建；引擎不保留行程記憶     |
 | 使用者主導        | 可任意修改歷史訊息、tool results、甚至先前 AI 回應              |
 | 極簡核心         | 引擎只負責必要流程                                      |
 | 高度可擴充        | diff preview、logging、權限、多模型轉換等皆由 extension 實作 |
@@ -419,4 +419,4 @@ Pending: CodingAgent API、README、內建 skill pack、智慧匹配 …
 ---
 
 **專案狀態**：Phase 0–7 完成（Web Search/Fetch）；下一步 Phase 8 History
-**參考**：與 Aider、OpenHands 相比，uzcode 專注透明度、可控性與極簡，方便 debug / replay。
+**參考**：與其他Agent相比，uzcode 專注透明度、可控性與極簡，方便 debug / replay。

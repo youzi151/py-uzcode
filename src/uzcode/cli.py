@@ -102,7 +102,7 @@ def _add_shared_args(parser: argparse.ArgumentParser) -> None:
 def build_run_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="uzcode",
-        description="Minimal, stateless AI coding agent",
+        description="Minimal AI coding agent (no hidden memory)",
     )
     _add_shared_args(parser)
     parser.add_argument(
