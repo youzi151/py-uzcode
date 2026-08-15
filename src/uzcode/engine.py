@@ -14,6 +14,7 @@ from langgraph.graph import END, START, StateGraph
 
 from uzcode.data import Config, Message, Session
 from uzcode.extension.base import HookRegistry
+from uzcode.storage import Storage
 from uzcode.tools.registry import tool_cfg, tool_enabled, tool_permission
 from uzcode.cfg import PrepareMeta
 
@@ -106,12 +107,14 @@ def _mk_ctx(
     Short-lived extension ctx. Only ``ctx["state"]`` is written back to LangGraph.
     ``session`` is the run's Session (``session.toml`` path + messages).
     ``preparemeta`` is immutable prepare metadata (CLI --cfg tokens, paths).
+    ``storage`` is work-dir ``.uzcode/storage.toml`` (not graph state).
     """
     return {
         "state": _copy_state(state),
         "config": config,
         "session": session,
         "preparemeta": prepare_meta,
+        "storage": Storage(config.work_dir),
         "tool": tool,
         "error": error,
     }

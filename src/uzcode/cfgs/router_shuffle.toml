@@ -1,0 +1,15 @@
+[exts.llm_router]
+strategy = "shuffle"
+
+[extension]
+enable = ["llm_router"]
+[extension.__merge]
+enable = "after"
+
+# [exts.llm_router.units.example_a]
+# api_key = "5K4XU3AO6U.3SU3VU;3UL42K72J/_VU_"
+# shuffle_weight = 2
+# 
+# [exts.llm_router.units.example_b]
+# api_key = "FM45L3U_2U03AU03ZO4K27DUX96M/4187"
+# shuffle_weight = 2

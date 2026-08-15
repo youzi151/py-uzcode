@@ -9,8 +9,16 @@ from uzcode import engine
 from uzcode.cfg import PrepareMeta
 from uzcode.data import Config, Message, Session
 from uzcode.extension import HookRegistry, load_extensions
+from uzcode.storage import Storage
 
-__all__ = ["CodingAgent", "Config", "Message", "PrepareMeta", "Session"]
+__all__ = [
+    "CodingAgent",
+    "Config",
+    "Message",
+    "PrepareMeta",
+    "Session",
+    "Storage",
+]
 
 
 class CodingAgent:
@@ -18,6 +26,7 @@ class CodingAgent:
 
     def __init__(self, work_dir: str | Path = "."):
         self.work_dir = Path(work_dir).resolve()
+        self.storage = Storage(self.work_dir)
 
     def prepare(
         self,
@@ -55,6 +64,7 @@ class CodingAgent:
             "config": config,
             "session": session,
             "registry": reg,
+            "storage": self.storage,
             "action": "",
             "appended": [],
         }
