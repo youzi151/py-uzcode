@@ -2,7 +2,7 @@
 
 [English](../README.md)
 
-一個用 Python 寫的**極簡** AI Coding Agent。核心是薄薄一層**無狀態引擎**；對話與策略都放在你可以檢視、編輯、重放、分叉的 TOML 裡——**沒有隱藏記憶**。
+一個用 Python 寫的**極簡** AI Coding Agent。核心是薄薄一層**無常駐進程引擎**；對話與策略都放在你可以檢視、編輯、重放、分叉的 TOML 裡——**沒有隱藏記憶**。
 
 **保持簡單。把控制權交給使用者。**
 
@@ -257,7 +257,7 @@ content = "Read @{file:README.md} and outline next steps"
 
 ## 引擎（一次 CLI 呼叫）
 
-引擎是**無狀態**的：一次呼叫就是 `f(cfg, session, workdir)`。Session 與 cfg 是顯式狀態；`AgentState` 只存在於該次執行。
+引擎是**無常駐進程**的：一次呼叫就是 `f(cfg, session, workdir)`。Session 與 cfg 是顯式狀態；`AgentState` 只存在於該次執行。
 
 ```text
 handle_request

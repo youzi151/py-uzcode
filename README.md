@@ -2,7 +2,7 @@
 
 [中文](doc/README_zh.md)
 
-A **minimal** AI coding agent in Python. Thin **stateless engine**; conversation and policy live in TOML you can inspect, edit, replay, and fork — **no hidden memory**.
+A **minimal** AI coding agent in Python. Thin **daemonless engine**; conversation and policy live in TOML you can inspect, edit, replay, and fork — **no hidden memory**.
 
 **Keep it simple. Give control to the user.**
 
@@ -257,7 +257,7 @@ Write-back rules:
 
 ## Engine (one CLI invocation)
 
-The engine is **stateless**: one invocation is `f(cfg, session, workdir)`. Session and cfg are the explicit state; `AgentState` exists only for that run.
+The engine is **daemonless**: one invocation is `f(cfg, session, workdir)`. Session and cfg are the explicit state; `AgentState` exists only for that run.
 
 ```text
 handle_request
